@@ -176,28 +176,34 @@ class BposdRefDecoder:
         yield lambda c: (c >> 1, c & 1)
 
     def _calibrate(self, sx, sz):
-        """Detect the working decoder, syndrome packing, and split."""
-        for i in range(min(sx.shape[0], 64)):
-            if sx[i].sum() == 0 or sz[i].sum() == 0:
-                continue
-            for _name, _shape, dec in self.decoders:
-                fns = self._packing_fns(sx.shape[1], _shape[0])
-                for pack_name, fn in fns.items():
-                    packed = fn(sx[i], sz[i])
-                    try:
-                        out = dec.decode(packed)
-                    except Exception:
-                        continue
-                    corr = np.asarray(
-                        out[0] if isinstance(out, tuple) else out)
-                    corr = corr.ravel().astype(np.int8)
-                    for split in self._splits():
+        """Detect the working decoder, syndrome packing, and split.
+
+        Validate each candidate on several shots so that symmetric
+        weight-1 errors cannot lock an ambiguous layout.
+        """
+        shots = [i for i in range(min(sx.shape[0], 64))
+                 if sx[i].sum() and sz[i].sum()][:8]
+        for _name, _shape, dec in self.decoders:
+            fns = self._packing_fns(sx.shape[1], _shape[0])
+            for _pack_name, fn in fns.items():
+                for split in self._splits():
+                    for i in shots:
+                        packed = fn(sx[i], sz[i])
+                        try:
+                            out = dec.decode(packed)
+                        except Exception:
+                            break
+                        corr = np.asarray(
+                            out[0] if isinstance(out, tuple) else out)
+                        corr = corr.ravel().astype(np.int8)
                         try:
                             c_x, c_z = split(corr)
                         except (TypeError, ValueError):
-                            continue
-                        if self._valid(sx[i], sz[i], c_x, c_z):
-                            return dec, fn, split
+                            break
+                        if not self._valid(sx[i], sz[i], c_x, c_z):
+                            break
+                    else:
+                        return dec, fn, split
         shapes = [(n, s) for n, s, _ in self.decoders]
         raise ValueError(
             f"no bposd matrix/syndrome/correction layout reproduced a "
