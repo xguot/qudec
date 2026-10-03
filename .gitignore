@@ -1,0 +1,27 @@
+# CodeWhale agent state
+.codewhale
+.deepseek/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Data and results, generated artifacts
+data/
+results/
+*.npz
+*.npy
+
+# Build artifacts
+*.egg-info/
+
+# HPC logs
+hpc/logs/
+
+# Editor and tooling
+tags
