@@ -22,6 +22,11 @@ and a `sinter`-protocol `decode_batch` interface.
     pip install -e .
     PYTHONPATH=src python3 -m unittest discover -s tests -v
 
+Reference sweep for paper parity (adds `ldpc` + `bposd`):
+
+    pip install -e ".[reference]"
+    python -u scripts/bench_gross_ref.py
+
 ## Quickstart
 
     import numpy as np

@@ -13,5 +13,11 @@ dependencies = [
     "torch",
 ]
 
+[project.optional-dependencies]
+reference = [
+    "ldpc",
+    "bposd",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,7 +1,6 @@
 #!/bin/bash
-# Control: phase one validation and the gross-code LER sweep on one
-# GPU node.  Runs the unittest suite, then the code-capacity
-# benchmark on the [[144, 12, 12]] bivariate bicycle code.
+# Control: phase one validation, the gross-code LER sweep, and the
+# reference bposd sweep for paper parity on one GPU node.
 #
 # Usage:
 #   sbatch hpc/run_test_bench.slurm
@@ -15,7 +14,7 @@
 #SBATCH --constraint="v100|a100|a6000|a40"
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64GB
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 
 set -euo pipefail
 
@@ -38,3 +37,4 @@ done
 echo "=== python: ${PY} ==="
 "${PY}" -m unittest discover -s tests -v
 "${PY}" -u scripts/bench_gross.py
+"${PY}" -u scripts/bench_gross_ref.py
