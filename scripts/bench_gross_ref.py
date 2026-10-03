@@ -18,8 +18,14 @@ Usage:
 Decoder defaults (minimum-sum BP, 1000 iterations, OSD-CS) follow the
 bposd package. Adjust max_iter / bp_method / osd_method to mirror the
 paper's methods section when matching published data points.
+
+The bposd API differs across releases (bposd v1 vs the ldpc v2 shim),
+so the wrapper probes the css_code matrix attributes and calibrates
+the syndrome packing and correction layout on the first shot whose X
+and Z syndromes are both nonzero, then reuses that format.
 """
 
+import re
 import sys
 
 import numpy as np
@@ -29,12 +35,7 @@ from qudec.codes import gross_code, logicals
 
 
 class BposdRefDecoder:
-    """bposd reference decoder wrapped in the in-tree benchmark interface.
-
-    The syndrome packing and correction layout of the installed bposd
-    version are detected on the first shot that decodes to a valid
-    correction, then reused for the rest of the batch.
-    """
+    """bposd reference decoder wrapped in the in-tree benchmark interface."""
 
     def __init__(self, h_x, h_z, l_x, l_z, p, max_iter=1000,
                  bp_method="minimum_sum", osd_method="osd_cs"):
@@ -47,26 +48,36 @@ class BposdRefDecoder:
         self.l_z = l_z
         self.n = h_x.shape[1]
         code = css_code(hx=h_x.astype(int), hz=h_z.astype(int))
-        self.bpd = self._build(code, bposd_decoder, p, max_iter,
-                               bp_method, osd_method)
+        self.decoders = self._build(code, bposd_decoder, p, max_iter,
+                                    bp_method, osd_method)
+        self._decoder = None
         self._pack = None
         self._split = None
 
     @staticmethod
     def _build(code, cls, p, max_iter, bp_method, osd_method):
-        """Construct the decoder, trying the matrix attributes of css_code."""
-        errors = []
-        for attr in ("hx", "h"):
-            mat = getattr(code, attr, None)
-            if mat is None:
+        """Build one decoder per matrix attribute of the css_code object."""
+        attrs = [a for a in dir(code) if not a.startswith("_")]
+        attrs.sort(key=lambda a: (not re.search(r"gf4|combined|css", a, re.I), a))
+        decoders, errors = [], []
+        for attr in attrs:
+            try:
+                mat = getattr(code, attr)
+            except Exception:
+                continue
+            if not hasattr(mat, "shape"):
                 continue
             try:
-                return cls(mat, error_rate=p, max_iter=max_iter,
-                           bp_method=bp_method, osd_method=osd_method)
+                dec = cls(mat, error_rate=p, max_iter=max_iter,
+                          bp_method=bp_method, osd_method=osd_method)
             except Exception as exc:
                 errors.append(f"{attr}: {type(exc).__name__}: {exc}")
-        raise ValueError(
-            "no css_code matrix built a bposd_decoder: " + "; ".join(errors))
+                continue
+            decoders.append((attr, mat.shape, dec))
+        if not decoders:
+            raise ValueError(
+                "no css_code matrix built a bposd_decoder: " + "; ".join(errors))
+        return decoders
 
     def _valid(self, sx, sz, c_x, c_z):
         """Check that a correction reproduces the given syndrome."""
@@ -77,47 +88,117 @@ class BposdRefDecoder:
         except ValueError:
             return False
 
+    @staticmethod
+    def _pair_packing_fns():
+        """Return 2-bit-per-row packings for a 2m-row decoder."""
+        def make(x_pos, z_pos, order):
+            def fn(a, b):
+                xs = np.column_stack(
+                    [a, np.zeros_like(a)] if x_pos == 0
+                    else [np.zeros_like(a), a])
+                zs = np.column_stack(
+                    [b, np.zeros_like(b)] if z_pos == 0
+                    else [np.zeros_like(b), b])
+                if order == "xz":
+                    seq = np.concatenate([zs, xs])
+                elif order == "zx":
+                    seq = np.concatenate([xs, zs])
+                else:
+                    seq = np.empty((2 * a.shape[0], 2), dtype=a.dtype)
+                    seq[0::2], seq[1::2] = zs, xs
+                return seq.ravel()
+            return fn
+        fns = {}
+        for x_pos in (0, 1):
+            for z_pos in (0, 1):
+                for order in ("xz", "zx", "alt"):
+                    fns[f"pairs_x{x_pos}z{z_pos}_{order}"] = make(
+                        x_pos, z_pos, order)
+        return fns
+
+    @staticmethod
+    def _symbol_packing_fns():
+        """Return GF(4) symbol packings for an m-row decoder."""
+        def make(x_mul, z_mul, order):
+            def fn(a, b):
+                xs = a * x_mul
+                zs = b * z_mul
+                if order == "xz":
+                    seq = np.concatenate([zs, xs])
+                elif order == "zx":
+                    seq = np.concatenate([xs, zs])
+                else:
+                    seq = np.empty(2 * a.shape[0], dtype=a.dtype)
+                    seq[0::2], seq[1::2] = zs, xs
+                return seq
+            return fn
+        fns = {}
+        for x_mul in (1, 2):
+            for z_mul in (1, 2):
+                for order in ("xz", "zx", "alt"):
+                    fns[f"sym_x{x_mul}z{z_mul}_{order}"] = make(
+                        x_mul, z_mul, order)
+        return fns
+
+    def _packing_fns(self, nq, m):
+        """Return {name: fn(sx, sz)} for syndrome packings of length m."""
+        fns = {}
+        if m == 2 * nq:
+            fns["sx_sz"] = lambda a, b: np.concatenate([a, b])
+            fns["sz_sx"] = lambda a, b: np.concatenate([b, a])
+            fns["alt_sx_sz"] = lambda a, b: np.ravel(np.stack([a, b], axis=1))
+            fns["alt_sz_sx"] = lambda a, b: np.ravel(np.stack([b, a], axis=1))
+            fns.update(self._symbol_packing_fns())
+        if m == 4 * nq:
+            fns.update(self._pair_packing_fns())
+        return fns
+
+    def _splits(self):
+        """Yield candidate corrections layouts as (c_x, c_z) splitters."""
+        n = self.n
+        yield lambda c: (c[:n], c[n:])
+        yield lambda c: (c[n:], c[:n])
+        yield lambda c: (c[0::2], c[1::2])
+        yield lambda c: (c[1::2], c[0::2])
+        yield lambda c: (c & 1, c >> 1)
+        yield lambda c: (c >> 1, c & 1)
+
     def _calibrate(self, sx, sz):
-        """Detect the bposd syndrome packing and correction layout."""
-        packs = [
-            lambda a, b: np.concatenate([a, b]),
-            lambda a, b: np.concatenate([b, a]),
-        ]
-        if sx.shape[1] == sz.shape[1]:
-            packs += [
-                lambda a, b: np.ravel(np.stack([a, b], axis=1)),
-                lambda a, b: np.ravel(np.stack([b, a], axis=1)),
-            ]
-        splits = [
-            lambda c: (c[: self.n], c[self.n:]),
-            lambda c: (c[self.n:], c[: self.n]),
-            lambda c: (c & 1, c >> 1),
-            lambda c: (c >> 1, c & 1),
-        ]
+        """Detect the working decoder, syndrome packing, and split."""
         for i in range(min(sx.shape[0], 64)):
-            for pack in packs:
-                out = self.bpd.decode(pack(sx[i], sz[i]))
-                corr = np.asarray(out[0] if isinstance(out, tuple) else out)
-                corr = corr.ravel().astype(np.int8)
-                for split in splits:
+            if sx[i].sum() == 0 or sz[i].sum() == 0:
+                continue
+            for _name, _shape, dec in self.decoders:
+                fns = self._packing_fns(sx.shape[1], _shape[0])
+                for pack_name, fn in fns.items():
+                    packed = fn(sx[i], sz[i])
                     try:
-                        c_x, c_z = split(corr)
-                    except (TypeError, ValueError):
+                        out = dec.decode(packed)
+                    except Exception:
                         continue
-                    if self._valid(sx[i], sz[i], c_x, c_z):
-                        return pack, split
+                    corr = np.asarray(
+                        out[0] if isinstance(out, tuple) else out)
+                    corr = corr.ravel().astype(np.int8)
+                    for split in self._splits():
+                        try:
+                            c_x, c_z = split(corr)
+                        except (TypeError, ValueError):
+                            continue
+                        if self._valid(sx[i], sz[i], c_x, c_z):
+                            return dec, fn, split
+        shapes = [(n, s) for n, s, _ in self.decoders]
         raise ValueError(
-            "could not infer the bposd syndrome/correction format; "
-            "decode one zero syndrome and report the output shape")
+            f"no bposd matrix/syndrome/correction layout reproduced a "
+            f"valid correction; matrices tried: {shapes}")
 
     def decode_corrections(self, sx, sz):
         """Decode (batch, m) X and Z syndromes to (batch, n) corrections."""
-        c_x = np.empty_like(sx)
-        c_z = np.empty_like(sz)
-        if self._pack is None:
-            self._pack, self._split = self._calibrate(sx, sz)
+        c_x = np.empty((sx.shape[0], self.n), dtype=sx.dtype)
+        c_z = np.empty((sz.shape[0], self.n), dtype=sz.dtype)
+        if self._decoder is None:
+            self._decoder, self._pack, self._split = self._calibrate(sx, sz)
         for i in range(sx.shape[0]):
-            out = self.bpd.decode(self._pack(sx[i], sz[i]))
+            out = self._decoder.decode(self._pack(sx[i], sz[i]))
             corr = np.asarray(out[0] if isinstance(out, tuple) else out)
             c_x[i], c_z[i] = self._split(corr.ravel().astype(np.int8))
         return c_x, c_z
