@@ -19,13 +19,15 @@ Decoder defaults (minimum-sum BP, 1000 iterations, OSD-CS) follow the
 bposd package. Adjust max_iter / bp_method / osd_method to mirror the
 paper's methods section when matching published data points.
 
-The bposd API differs across releases (bposd v1 vs the ldpc v2 shim),
-so the wrapper probes the css_code matrix attributes and calibrates
-the syndrome packing and correction layout on the first shot whose X
-and Z syndromes are both nonzero, then reuses that format.
+The combined check matrix (css_code.h) stores the error vector as
+[z-part | x-part] with syndrome [sx | sz]. The decoder runs through
+the native ldpc v2 API with the bposd v1 defaults (0.625 min-sum
+scaling, 10 combination-sweep orders) and per-part channel
+probabilities; the wrapper calibrates the syndrome packing and
+correction layout on the first shot whose X and Z syndromes are both
+nonzero, then reuses that format.
 """
 
-import re
 import sys
 
 import numpy as np
@@ -39,7 +41,6 @@ class BposdRefDecoder:
 
     def __init__(self, h_x, h_z, l_x, l_z, p, max_iter=1000,
                  bp_method="minimum_sum", osd_method="osd_cs"):
-        from bposd import bposd_decoder
         from bposd.css import css_code
 
         self.h_x = h_x
@@ -48,36 +49,47 @@ class BposdRefDecoder:
         self.l_z = l_z
         self.n = h_x.shape[1]
         code = css_code(hx=h_x.astype(int), hz=h_z.astype(int))
-        self.decoders = self._build(code, bposd_decoder, p, max_iter,
+        self.decoders = self._build(code, p, max_iter,
                                     bp_method, osd_method)
         self._decoder = None
         self._pack = None
         self._split = None
 
     @staticmethod
-    def _build(code, cls, p, max_iter, bp_method, osd_method):
-        """Build one decoder per matrix attribute of the css_code object."""
-        attrs = [a for a in dir(code) if not a.startswith("_")]
-        attrs.sort(key=lambda a: (not re.search(r"gf4|combined|css", a, re.I), a))
-        decoders, errors = [], []
-        for attr in attrs:
+    def _build(code, p, max_iter, bp_method, osd_method):
+        """Build the decoder on the combined binary parity check.
+
+        Prefer the native ldpc v2 BpOsdDecoder with per-part channel
+        probabilities and the bposd v1 defaults; fall back to the
+        legacy bposd shim when the native class is unavailable.
+        """
+        mat = getattr(code, "h", None)
+        errors = []
+        if mat is not None:
             try:
-                mat = getattr(code, attr)
-            except Exception:
-                continue
-            if not hasattr(mat, "shape"):
-                continue
-            try:
-                dec = cls(mat, error_rate=p, max_iter=max_iter,
-                          bp_method=bp_method, osd_method=osd_method)
+                from ldpc import BpOsdDecoder
+
+                dec = BpOsdDecoder(
+                    mat, error_channel=[2 * p / 3] * mat.shape[1],
+                    max_iter=max_iter, bp_method=bp_method,
+                    ms_scaling_factor=0.625, schedule="parallel",
+                    osd_method=osd_method, osd_order=10)
+                return [("h", mat.shape, dec)]
             except Exception as exc:
-                errors.append(f"{attr}: {type(exc).__name__}: {exc}")
-                continue
-            decoders.append((attr, mat.shape, dec))
-        if not decoders:
-            raise ValueError(
-                "no css_code matrix built a bposd_decoder: " + "; ".join(errors))
-        return decoders
+                errors.append(
+                    f"ldpc.BpOsdDecoder: {type(exc).__name__}: {exc}")
+        try:
+            from bposd import bposd_decoder
+
+            mat = mat if mat is not None else getattr(code, "hx", None)
+            if mat is None:
+                raise ValueError("css_code exposes no parity check matrix")
+            dec = bposd_decoder(mat, error_rate=p, max_iter=max_iter,
+                                bp_method=bp_method, osd_method=osd_method)
+            return [("h", mat.shape, dec)]
+        except Exception as exc:
+            errors.append(f"bposd shim: {type(exc).__name__}: {exc}")
+        raise ValueError("no decoder built: " + "; ".join(errors))
 
     def _valid(self, sx, sz, c_x, c_z):
         """Check that a correction reproduces the given syndrome."""
