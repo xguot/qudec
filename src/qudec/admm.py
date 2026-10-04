@@ -291,9 +291,9 @@ class AdmmOsdDecoder:
         Return (corr_x, corr_z), each (batch, n) int8 per-qubit corrections.
         """
         x_x = admm_solve_batch(self.h_z, sx, rho=self.rho,
-                               max_iter=self.max_iter).numpy()
+                               max_iter=self.max_iter).cpu().numpy()
         x_z = admm_solve_batch(self.h_x, sz, rho=self.rho,
-                               max_iter=self.max_iter).numpy()
+                               max_iter=self.max_iter).cpu().numpy()
         c_x = np.stack(
             [self._decode_osd(self.h_z, sx[i], x_x[i])
              for i in range(sx.shape[0])], axis=0)
