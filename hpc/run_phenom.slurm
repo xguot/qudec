@@ -10,10 +10,9 @@
 #SBATCH --job-name=qudec_phenom
 #SBATCH --output=hpc/logs/qudec_phenom_%j.out
 #SBATCH --error=hpc/logs/qudec_phenom_%j.err
-#SBATCH --account=nssac_students
-#SBATCH --partition=bii-gpu
+#SBATCH --account=tongx
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --constraint="v100|a100|a6000|a40"
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=0:30:00
