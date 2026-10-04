@@ -33,6 +33,13 @@ Reference sweep for paper parity (adds `ldpc` + `bposd`):
     pip install -e ".[reference]"
     python -u scripts/bench_gross_ref.py
 
+## HPC (Rivanna)
+
+Sync code with `bash hpc/sync.sh push`, set up the environment once with
+`bash hpc/setup.sh`, then submit `hpc/run_test_bench.slurm` (tests plus
+code-capacity sweeps) or `hpc/run_phenom.slurm` (phenomenological noise).
+Pull results back with `bash hpc/sync.sh pull`.
+
 ## Quickstart
 
     import numpy as np
