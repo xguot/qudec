@@ -65,22 +65,19 @@ def gf2_rref(mat):
     pivots = []
     r = 0
     for c in range(cols):
-        pivot = None
-        for i in range(r, rows):
-            if a[i, c]:
-                pivot = i
-                break
-        if pivot is None:
-            continue
-        if pivot != r:
-            a[[r, pivot]] = a[[pivot, r]]
-        for i in range(rows):
-            if i != r and a[i, c]:
-                a[i] ^= a[r]
-        pivots.append(c)
-        r += 1
         if r == rows:
             break
+        below = np.nonzero(a[r:, c])[0]
+        if len(below) == 0:
+            continue
+        pivot = r + below[0]
+        if pivot != r:
+            a[[r, pivot]] = a[[pivot, r]]
+        mask = (a[:, c] == 1)
+        mask[r] = False
+        a[mask] ^= a[r]
+        pivots.append(c)
+        r += 1
     return a, np.array(pivots, dtype=np.int64)
 
 

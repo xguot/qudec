@@ -60,8 +60,9 @@ if [ "$DIRECTION" = "push" ]; then
   echo "  Push complete."
   echo "  Tests and code-capacity sweep:"
   echo "    ssh ${REMOTE_HOST} && cd ${REMOTE_PATH} && sbatch hpc/run_test_bench.slurm"
-  echo "  Phenomenological sweep:"
-  echo "    ssh ${REMOTE_HOST} && cd ${REMOTE_PATH} && sbatch hpc/run_phenom.slurm"
+  echo "  Phenomenological sweep (one job per code):"
+  echo "    ssh ${REMOTE_HOST} && cd ${REMOTE_PATH} && sbatch hpc/run_phenom.slurm 72"
+  echo "    ssh ${REMOTE_HOST} && cd ${REMOTE_PATH} && sbatch hpc/run_phenom.slurm 144"
 fi
 
 if [ "$DIRECTION" = "pull" ]; then

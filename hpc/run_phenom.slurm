@@ -1,9 +1,11 @@
 #!/bin/bash
 # Control: phenomenological-noise sweep comparing BP+OSD and ADMM+OSD
-# on the bivariate bicycle codes. The ADMM solver runs on the GPU.
+# on one bivariate bicycle code. The ADMM solver runs on the GPU.
+# Submit one job per code so each stays short in the queue.
 #
 # Usage:
-#   sbatch hpc/run_phenom.slurm
+#   sbatch hpc/run_phenom.slurm 72
+#   sbatch hpc/run_phenom.slurm 144
 
 #SBATCH --job-name=qudec_phenom
 #SBATCH --output=hpc/logs/qudec_phenom_%j.out
@@ -34,7 +36,8 @@ for CAND in \
     fi
 done
 
+CODE="${1:-72}"
+
 echo "=== python: ${PY} ==="
 "${PY}" -m unittest tests.test_phenom -v
-"${PY}" -u scripts/bench_phenom.py 72 6 400
-"${PY}" -u scripts/bench_phenom.py 144 6 400
+"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 400
