@@ -194,18 +194,24 @@ def parity_polytope_projection(z, parity, mask, grid=9, bisect_iters=24,
 
 
 def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
-                     tol_pri=1e-5, tol_dual=1e-5, device=None, max_r=None):
+                     tol_pri=1e-5, tol_dual=1e-5, device=None, max_r=None,
+                     c_vec=None, g_vec=None, x_init=None, z_init=None,
+                     y_init=None, return_state=False):
     """Solve the parity-polytope relaxation for syndromes s (batch, m).
 
-    Return qubit error indicators x (batch, n) in [0, 1]. With rho large
-    enough that rho * d_v > 1, the x-update is the unique minimizer of a
-    separable quadratic, clipped to the unit cube. Tensors run on cuda
-    when a GPU is available and device is not given.
+    Return qubit error indicators x (batch, n) in [0, 1]. c_vec are the
+    per-column objective coefficients (log-likelihood weights per the
+    paper's Appendix C; uniform by default) and g_vec the diagonal of
+    the quadratic term (zero for the plain relaxation, -2 lambda for the
+    LDR variant). With rho large enough that g_i + rho * d_v > 0 the
+    x-update is the unique minimizer of a separable quadratic, clipped
+    to the unit cube. Tensors run on cuda when a GPU is available.
     """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     m, n = h.shape
     if m == 0:
-        return torch.zeros(s.shape[0], n, device=dev)
+        out = torch.zeros(s.shape[0], n, device=dev)
+        return (out, out, out) if return_state else out
     idx, mask_np = build_tanner(h)
     mask = torch.as_tensor(mask_np, device=dev)
     flat_idx = torch.as_tensor(idx.reshape(-1), device=dev)
@@ -213,18 +219,32 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
     parity = torch.as_tensor(s, dtype=torch.long, device=dev)
     d_v = torch.as_tensor((h != 0).sum(axis=0), dtype=torch.float32,
                           device=dev)
-    z = parity_polytope_projection(
-        torch.zeros(batch, m, idx.shape[1], device=dev), parity, mask,
-        max_r=max_r)
-    y = -rho * z
-    x = torch.zeros(batch, n, device=dev)
+    if c_vec is None:
+        c = torch.ones(n, device=dev)
+    else:
+        c = torch.as_tensor(c_vec, dtype=torch.float32, device=dev)
+    if g_vec is None:
+        g = torch.zeros(n, device=dev)
+    else:
+        g = torch.as_tensor(g_vec, dtype=torch.float32, device=dev)
+    denom = rho * d_v + g
+    if z_init is not None:
+        z = z_init
+        x = x_init if x_init is not None else torch.zeros(batch, n, device=dev)
+        y = y_init if y_init is not None else -rho * z
+    else:
+        z = parity_polytope_projection(
+            torch.zeros(batch, m, idx.shape[1], device=dev), parity, mask,
+            max_r=max_r)
+        y = -rho * z
+        x = torch.zeros(batch, n, device=dev)
     pad = torch.zeros(batch, n + 1, device=dev)
     for _ in range(max_iter):
         pad[:, :n] = x
         x_exp = pad[:, flat_idx].view(batch, m, -1)
         sums = torch.zeros(batch, n + 1, device=dev)
         sums.index_add_(1, flat_idx, (rho * z - y).reshape(batch, -1))
-        x_new = ((sums[:, :n] - 1.0) / (rho * d_v)).clamp(0.0, 1.0)
+        x_new = ((sums[:, :n] - c) / denom).clamp(0.0, 1.0)
         pad[:, :n] = x_new
         x_exp = pad[:, flat_idx].view(batch, m, -1)
         y_half = y + rho * (alpha - 1.0) * (x_exp - z)
@@ -236,6 +256,39 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
             x = x_new
             break
         x, z = x_new, z_new
+    if return_state:
+        return x, z, y
+    return x
+
+
+def admm_ldr_solve(h, s, rho=2.0, max_iter=500, device=None, max_r=None,
+                   outer=5, beta=1.0, c_vec=None, tol=1e-5):
+    """LDR-ADMM: Lagrangian dual relaxation with the adaptive penalty.
+
+    Outer loop updates lambda by the subgradient x - x**2 with a
+    diminishing step; the inner ADMM uses c = c0 + lambda and
+    g = -2 lambda, warm-started from the previous solution. Stops when
+    x is integral to tolerance or the outer budget is spent.
+    """
+    dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    batch = s.shape[0]
+    n = h.shape[1]
+    if c_vec is None:
+        c0 = torch.ones(n, device=dev)
+    else:
+        c0 = torch.as_tensor(c_vec, dtype=torch.float32, device=dev)
+    lam = torch.zeros(batch, n, device=dev)
+    x = None
+    z = None
+    y = None
+    for k in range(outer):
+        x, z, y = admm_solve_batch(
+            h, s, rho=rho, max_iter=max_iter, device=dev, max_r=max_r,
+            c_vec=(c0 + lam), g_vec=(-2.0 * lam), x_init=x, z_init=z,
+            y_init=y, return_state=True)
+        if (x - x * x).abs().max().item() <= tol:
+            break
+        lam = lam + (beta / (k + 1) ** 0.5) * (x - x * x)
     return x
 
 
@@ -248,7 +301,8 @@ class AdmmOsdDecoder:
     """
 
     def __init__(self, h_x, h_z, l_x, l_z, p_x=0.05, p_z=0.05, osd_order=1,
-                 rho=2.0, max_iter=500, max_r=None):
+                 rho=2.0, max_iter=500, max_r=None, weights_x=None,
+                 weights_z=None, ldr=False, ldr_outer=5, ldr_beta=1.0):
         self.h_x = h_x.astype(np.int8)
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
@@ -259,6 +313,11 @@ class AdmmOsdDecoder:
         self.rho = rho
         self.max_iter = max_iter
         self.max_r = max_r
+        self.weights_x = weights_x
+        self.weights_z = weights_z
+        self.ldr = ldr
+        self.ldr_outer = ldr_outer
+        self.ldr_beta = ldr_beta
 
     def _osd(self, h, s, order):
         """Run OSD post-processing on h with syndrome s.
@@ -296,12 +355,19 @@ class AdmmOsdDecoder:
 
         Return (corr_x, corr_z), each (batch, n) int8 per-qubit corrections.
         """
-        x_x = admm_solve_batch(self.h_z, sx, rho=self.rho,
-                               max_iter=self.max_iter,
-                               max_r=self.max_r).cpu().numpy()
-        x_z = admm_solve_batch(self.h_x, sz, rho=self.rho,
-                               max_iter=self.max_iter,
-                               max_r=self.max_r).cpu().numpy()
+        kw = dict(rho=self.rho, max_iter=self.max_iter, max_r=self.max_r)
+        if self.ldr:
+            x_x = admm_ldr_solve(self.h_z, sx, outer=self.ldr_outer,
+                                 beta=self.ldr_beta, c_vec=self.weights_x,
+                                 **kw).cpu().numpy()
+            x_z = admm_ldr_solve(self.h_x, sz, outer=self.ldr_outer,
+                                 beta=self.ldr_beta, c_vec=self.weights_z,
+                                 **kw).cpu().numpy()
+        else:
+            x_x = admm_solve_batch(self.h_z, sx, c_vec=self.weights_x,
+                                   **kw).cpu().numpy()
+            x_z = admm_solve_batch(self.h_x, sz, c_vec=self.weights_z,
+                                   **kw).cpu().numpy()
         c_x = np.stack(
             [self._decode_osd(self.h_z, sx[i], x_x[i])
              for i in range(sx.shape[0])], axis=0)

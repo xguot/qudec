@@ -13,9 +13,10 @@
 #SBATCH --account=tongx
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
+#SBATCH --constraint="a6000|a40"
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=0:40:00
+#SBATCH --time=4:00:00
 
 set -euo pipefail
 

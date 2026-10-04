@@ -8,6 +8,7 @@ from scipy.optimize import minimize
 
 from qudec.admm import (
     AdmmOsdDecoder,
+    admm_ldr_solve,
     admm_solve_batch,
     parity_polytope_projection,
 )
@@ -125,6 +126,24 @@ class TestAdmm(unittest.TestCase):
             sx.T.astype(np.int8), sz.T.astype(np.int8))
         self.assertTrue(np.all((h_z @ c_x.T) % 2 == sx))
         self.assertTrue(np.all((h_x @ c_z.T) % 2 == sz))
+
+
+class TestAdmmVariants(unittest.TestCase):
+    def test_weighted_pushes_low_weight_column(self):
+        h = np.array([[1, 1]], dtype=np.int8)
+        s = np.array([[1]], dtype=np.int8)
+        x_plain = admm_solve_batch(h, s, max_iter=500).numpy()[0]
+        w = np.array([0.2, 10.0], dtype=np.float32)
+        x_w = admm_solve_batch(h, s, c_vec=w, max_iter=500).numpy()[0]
+        self.assertLess(x_w[1], x_plain[1])
+
+    def test_ldr_smoke(self):
+        h_x, h_z = steane_code()
+        for sy in range(8):
+            s = np.array([(sy >> j) & 1 for j in range(3)], np.int8)
+            x = admm_ldr_solve(h_z, s.reshape(1, -1), max_iter=300,
+                               outer=3).numpy()[0]
+            self.assertTrue(np.all((x >= 0) & (x <= 1)))
 
 
 if __name__ == "__main__":

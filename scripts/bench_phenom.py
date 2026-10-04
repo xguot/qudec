@@ -13,6 +13,8 @@ Usage:
 import sys
 import time
 
+import numpy as np
+
 from qudec.admm import AdmmOsdDecoder
 from qudec.bposd import BpOsdDecoder
 from qudec.codes import gross_code, logicals, medium_code
@@ -27,11 +29,26 @@ def main():
         [0.005, 0.01, 0.02, 0.03]
     h_x, h_z = medium_code() if code == "72" else gross_code()
     l_x, l_z = logicals(h_x, h_z)
+    n = h_x.shape[1]
     for p in ps:
+        w_data = np.log((1 - 2 * p / 3) / (2 * p / 3))
+        w_meas = np.log((1 - p) / p)
+        weights_x = np.concatenate(
+            [np.full(d * n, w_data),
+             np.full(d * h_z.shape[0], w_meas)]).astype(np.float32)
+        weights_z = np.concatenate(
+            [np.full(d * n, w_data),
+             np.full(d * h_x.shape[0], w_meas)]).astype(np.float32)
         for name, cls, kw in [
                 ("bp", BpOsdDecoder, {"max_iter": 30, "osd_order": 1}),
-                ("admm", AdmmOsdDecoder, {"max_iter": 100, "osd_order": 1,
-                                          "max_r": 4})]:
+                ("admm", AdmmOsdDecoder, {"max_iter": 150, "osd_order": 1,
+                                          "max_r": 4}),
+                ("admm-w", AdmmOsdDecoder,
+                 {"max_iter": 150, "osd_order": 1, "max_r": 4,
+                  "weights_x": weights_x, "weights_z": weights_z}),
+                ("admm-ldr", AdmmOsdDecoder,
+                 {"max_iter": 150, "osd_order": 1, "max_r": 4,
+                  "ldr": True, "ldr_outer": 4})]:
             dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
                                 p_x=2 * p / 3, p_z=2 * p / 3, **kw)
             t0 = time.time()
