@@ -33,7 +33,8 @@ def build_tanner(h):
     return idx, mask
 
 
-def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
+def parity_polytope_projection(z, parity, mask, grid=17, bisect_iters=24,
+                             max_r=None):
     """Project z (batch, m, d) onto per-check parity polytopes.
 
     Uses the two-slice representation of the parity polytope (Barman et
@@ -74,13 +75,15 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
     lam_hi = 8.0
     dgrid = torch.linspace(0.0, lam_hi, grid, dtype=torch.float32,
                            device=vals.device)
-    max_r = min(d - 1, int(deg.max().item()) - 1)
+    r_cap = min(d - 1, int(deg.max().item()) - 1)
+    if max_r is not None:
+        r_cap = min(r_cap, max_r)
 
     def g_outer(x):
         pre = (x * (kk <= parity.unsqueeze(2) + 1)).sum(dim=2)
         return 2.0 * pre - x.sum(dim=2) - parity
 
-    for r in range(max_r + 1):
+    for r in range(r_cap + 1):
         n_slice = torch.where(kk <= r + 1, 1.0, -1.0)
 
         def x_of(mu, delta):
@@ -191,7 +194,7 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
 
 
 def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
-                     tol_pri=1e-5, tol_dual=1e-5, device=None):
+                     tol_pri=1e-5, tol_dual=1e-5, device=None, max_r=None):
     """Solve the parity-polytope relaxation for syndromes s (batch, m).
 
     Return qubit error indicators x (batch, n) in [0, 1]. With rho large
@@ -211,7 +214,8 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
     d_v = torch.as_tensor((h != 0).sum(axis=0), dtype=torch.float32,
                           device=dev)
     z = parity_polytope_projection(
-        torch.zeros(batch, m, idx.shape[1], device=dev), parity, mask)
+        torch.zeros(batch, m, idx.shape[1], device=dev), parity, mask,
+        max_r=max_r)
     y = -rho * z
     x = torch.zeros(batch, n, device=dev)
     pad = torch.zeros(batch, n + 1, device=dev)
@@ -224,7 +228,8 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
         pad[:, :n] = x_new
         x_exp = pad[:, flat_idx].view(batch, m, -1)
         y_half = y + rho * (alpha - 1.0) * (x_exp - z)
-        z_new = parity_polytope_projection(x_exp + y_half / rho, parity, mask)
+        z_new = parity_polytope_projection(x_exp + y_half / rho, parity,
+                                           mask, max_r=max_r)
         y = y_half + rho * (x_exp - z_new)
         if (torch.norm(x_exp - z_new) <= tol_pri
                 and torch.norm(z_new - z) <= tol_dual):
@@ -243,7 +248,7 @@ class AdmmOsdDecoder:
     """
 
     def __init__(self, h_x, h_z, l_x, l_z, p_x=0.05, p_z=0.05, osd_order=1,
-                 rho=2.0, max_iter=500):
+                 rho=2.0, max_iter=500, max_r=None):
         self.h_x = h_x.astype(np.int8)
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
@@ -253,6 +258,7 @@ class AdmmOsdDecoder:
         self.osd_order = osd_order
         self.rho = rho
         self.max_iter = max_iter
+        self.max_r = max_r
 
     def _osd(self, h, s, order):
         """Run OSD post-processing on h with syndrome s.
@@ -291,9 +297,11 @@ class AdmmOsdDecoder:
         Return (corr_x, corr_z), each (batch, n) int8 per-qubit corrections.
         """
         x_x = admm_solve_batch(self.h_z, sx, rho=self.rho,
-                               max_iter=self.max_iter).cpu().numpy()
+                               max_iter=self.max_iter,
+                               max_r=self.max_r).cpu().numpy()
         x_z = admm_solve_batch(self.h_x, sz, rho=self.rho,
-                               max_iter=self.max_iter).cpu().numpy()
+                               max_iter=self.max_iter,
+                               max_r=self.max_r).cpu().numpy()
         c_x = np.stack(
             [self._decode_osd(self.h_z, sx[i], x_x[i])
              for i in range(sx.shape[0])], axis=0)

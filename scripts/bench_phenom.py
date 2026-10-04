@@ -28,7 +28,8 @@ def main():
     for p in [0.005, 0.01, 0.02, 0.03]:
         for name, cls, kw in [
                 ("bp", BpOsdDecoder, {"max_iter": 30, "osd_order": 1}),
-                ("admm", AdmmOsdDecoder, {"max_iter": 200, "osd_order": 1})]:
+                ("admm", AdmmOsdDecoder, {"max_iter": 150, "osd_order": 1,
+                                          "max_r": 4})]:
             dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
                                 p_x=2 * p / 3, p_z=2 * p / 3, **kw)
             t0 = time.time()

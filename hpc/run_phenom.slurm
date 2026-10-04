@@ -13,8 +13,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="v100|a100|a6000|a40"
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64GB
-#SBATCH --time=4:00:00
+#SBATCH --mem=32GB
+#SBATCH --time=0:30:00
 
 set -euo pipefail
 
