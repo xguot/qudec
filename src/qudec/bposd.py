@@ -76,8 +76,9 @@ class BpOsdDecoder:
                 if j in pivot_set:
                     continue
                 cand = e[pivots] ^ rref[:r, j]
-                if cand.sum() < e[pivots].sum():
+                if cand.sum() + (e[j] ^ 1) < e[pivots].sum() + e[j]:
                     e[pivots] = cand
+                    e[j] ^= 1
         corr = np.zeros(h.shape[1], dtype=np.int8)
         corr[order] = e
         return corr

@@ -17,6 +17,9 @@ results/
 *.npz
 *.npy
 
+# Downloaded papers (reference material, not source)
+*.pdf
+
 # Build artifacts
 *.egg-info/
 
