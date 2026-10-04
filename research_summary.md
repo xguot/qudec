@@ -67,8 +67,20 @@ LP+OSD sits at or below BP+OSD at three of four points and below the
 20000-shot reference at low p, reproducing the paper's qualitative claim.
 Zero invalid corrections throughout.
 
-Phenomenological sweep (BP+OSD vs ADMM+OSD, d = 6 rounds, both codes):
-running on Rivanna.
+Phenomenological noise, [[72,12,6]], d = 6 rounds, 300 shots (Rivanna A40):
+
+- p=0.005: ADMM 0.00333 · BP 0.00667
+- p=0.010: ADMM 0.04667 · BP 0.03333
+- p=0.020: ADMM 0.14667 · BP 0.10000
+- p=0.030: ADMM 0.30333 · BP 0.26333
+
+Zero invalid corrections throughout. Per-point gaps are sub-2-sigma, but
+the ADMM trails BP at the three highest rates, consistently on the same
+side. The measured answer to the open question, at these settings, is
+that the small code-capacity advantage of plain ADMM+OSD does not
+survive phenomenological noise: it inverts into a modest, consistent
+shortfall. The LLR-weighted and LDR variants remain untested and are the
+natural follow-up.
 
 ## Known limitations
 
@@ -85,9 +97,8 @@ running on Rivanna.
 
 ## Roadmap
 
-- Finish the phenomenological comparison and locate the crossover, if
-  any, in code size or error rate.
-- Circuit-level noise through stim/sinter once the phenomenological
-  question is answered.
-- LDR-ADMM with the adaptive penalty and per-mechanism LLR weights as
-  the natural strengthening of the plain variant.
+- Sharpen the [[72,12,6]] comparison with more shots and test the
+  LLR-weighted objective and the LDR-ADMM adaptive penalty, the natural
+  strengthenings of the plain variant.
+- Run the [[144,12,12]] code for the code-size dimension.
+- Circuit-level noise through stim/sinter.
