@@ -37,6 +37,8 @@ done
 
 CODE="${1:-72}"
 
+export CUDA_LAUNCH_BLOCKING=1
+
 echo "=== python: ${PY} ==="
 "${PY}" -m unittest tests.test_phenom -v
 "${PY}" -u scripts/bench_phenom.py "${CODE}" 6 300
