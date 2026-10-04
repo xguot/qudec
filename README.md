@@ -18,6 +18,8 @@ and a `sinter`-protocol `decode_batch` interface.
 - `src/qudec/admm.py` — batched ADMM solver for the parity-polytope
   relaxation (Gu-Soleimanifar ISIT 2026)
 - `src/qudec/noise.py` — i.i.d. X/Z/depolarizing error sampling
+- `src/qudec/phenom.py` — phenomenological noise: per-round data and
+  measurement errors on the time-expanded detector system
 - `src/qudec/bench.py` — code-capacity logical error rate benchmark
 - `tests/` — exhaustive checks against brute-force MLD on small codes
 
@@ -49,7 +51,8 @@ Reference sweep for paper parity (adds `ldpc` + `bposd`):
 - Phase one (this commit): BP + OSD core, verified offline against
   brute-force decoding on small codes and the repetition-code MLD rate.
 - Phase two (Rivanna): reproduce `ldpc`/`bposd` accuracy on bivariate
-  bicycle codes, batch OSD elimination on CUDA, wall-clock benchmarks.
+  bicycle codes, batch OSD elimination on CUDA, wall-clock benchmarks,
+  and the first LP/ADMM decoding results under phenomenological noise.
 - Phase three (Rivanna): `stim` + `sinter` circuit-level noise
   reproduction of published logical error rates.
 - Phase four: ADMM decoder on the decoding LP as an OSD replacement,

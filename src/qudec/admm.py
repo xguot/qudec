@@ -53,7 +53,8 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
     big = 1e6
     vals = torch.where(mask.unsqueeze(0), z, torch.full_like(z, -big))
     deg = mask.sum(dim=1).long()
-    kk = torch.arange(1, d + 1, dtype=torch.float32).view(1, 1, d)
+    kk = torch.arange(1, d + 1, dtype=torch.float32,
+                      device=vals.device).view(1, 1, d)
     vals, sort_idx = vals.sort(dim=2, descending=True)
 
     def g_of(v, r):
@@ -71,7 +72,8 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
 
     n_outer = torch.where(kk <= parity.unsqueeze(2) + 1, 1.0, -1.0)
     lam_hi = 8.0
-    dgrid = torch.linspace(0.0, lam_hi, grid, dtype=torch.float32)
+    dgrid = torch.linspace(0.0, lam_hi, grid, dtype=torch.float32,
+                           device=vals.device)
     max_r = min(d - 1, int(deg.max().item()) - 1)
 
     def g_outer(x):
@@ -104,11 +106,11 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
             bps = bps.clamp(min=0.0)
             bps, _ = bps.sort(dim=2)
             n_pts = bps.shape[2]
-            g0 = g_of(x_of(torch.zeros(batch, m), delta), r)
-            best = torch.full((batch, m), float("inf"))
+            g0 = g_of(x_of(vals.new_zeros(batch, m), delta), r)
+            best = vals.new_full((batch, m), float("inf"))
             found = g0 <= 1e-6
             best = torch.where(found, torch.zeros_like(best), best)
-            prev_mu = torch.zeros(batch, m)
+            prev_mu = vals.new_zeros(batch, m)
             prev_g = g0
             for t in range(n_pts):
                 mu_t = bps[:, :, t]
@@ -127,7 +129,7 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
                 keep = g_t > 1e-6
                 prev_mu = torch.where(keep, mu_t, prev_mu)
                 prev_g = torch.where(keep, g_t, prev_g)
-            return torch.where(best.isinf(), torch.zeros(batch, m), best)
+            return torch.where(best.isinf(), vals.new_zeros(batch, m), best)
 
         # outer: smallest delta >= 0 with g_outer(mu*(delta), delta) <= 0
         h = torch.stack(
@@ -160,8 +162,8 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
             best_ok = ok | best_ok
 
     # lower-bound candidate for odd parity: x = clip(vals + mu), sum = 1
-    lo = torch.zeros(batch, m)
-    hi = torch.full((batch, m), 1.0)
+    lo = vals.new_zeros(batch, m)
+    hi = vals.new_full((batch, m), 1.0)
     for _ in range(bisect_iters):
         mid = (lo + hi) / 2
         sm = (vals + mid.unsqueeze(2)).clamp(0.0, 1.0).sum(dim=2)
@@ -189,31 +191,34 @@ def parity_polytope_projection(z, parity, mask, grid=33, bisect_iters=24):
 
 
 def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
-                     tol_pri=1e-5, tol_dual=1e-5):
+                     tol_pri=1e-5, tol_dual=1e-5, device=None):
     """Solve the parity-polytope relaxation for syndromes s (batch, m).
 
     Return qubit error indicators x (batch, n) in [0, 1]. With rho large
     enough that rho * d_v > 1, the x-update is the unique minimizer of a
-    separable quadratic, clipped to the unit cube.
+    separable quadratic, clipped to the unit cube. Tensors run on cuda
+    when a GPU is available and device is not given.
     """
+    dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     m, n = h.shape
     if m == 0:
-        return torch.zeros(s.shape[0], n)
+        return torch.zeros(s.shape[0], n, device=dev)
     idx, mask_np = build_tanner(h)
-    mask = torch.as_tensor(mask_np)
-    flat_idx = torch.as_tensor(idx.reshape(-1))
+    mask = torch.as_tensor(mask_np, device=dev)
+    flat_idx = torch.as_tensor(idx.reshape(-1), device=dev)
     batch = s.shape[0]
-    parity = torch.as_tensor(s, dtype=torch.long)
-    d_v = torch.as_tensor((h != 0).sum(axis=0), dtype=torch.float32)
+    parity = torch.as_tensor(s, dtype=torch.long, device=dev)
+    d_v = torch.as_tensor((h != 0).sum(axis=0), dtype=torch.float32,
+                          device=dev)
     z = parity_polytope_projection(
-        torch.zeros(batch, m, idx.shape[1]), parity, mask)
+        torch.zeros(batch, m, idx.shape[1], device=dev), parity, mask)
     y = -rho * z
-    x = torch.zeros(batch, n)
-    pad = torch.zeros(batch, n + 1)
+    x = torch.zeros(batch, n, device=dev)
+    pad = torch.zeros(batch, n + 1, device=dev)
     for _ in range(max_iter):
         pad[:, :n] = x
         x_exp = pad[:, flat_idx].view(batch, m, -1)
-        sums = torch.zeros(batch, n + 1)
+        sums = torch.zeros(batch, n + 1, device=dev)
         sums.index_add_(1, flat_idx, (rho * z - y).reshape(batch, -1))
         x_new = ((sums[:, :n] - 1.0) / (rho * d_v)).clamp(0.0, 1.0)
         pad[:, :n] = x_new
