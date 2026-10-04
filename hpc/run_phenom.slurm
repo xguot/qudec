@@ -39,4 +39,4 @@ CODE="${1:-72}"
 
 echo "=== python: ${PY} ==="
 "${PY}" -m unittest tests.test_phenom -v
-"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 400
+"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 300

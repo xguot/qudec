@@ -22,13 +22,13 @@ from qudec.phenom import PhenomDecoder, benchmark_phenom
 def main():
     code = sys.argv[1]
     d = int(sys.argv[2])
-    shots = int(sys.argv[3]) if len(sys.argv) > 3 else 200
+    shots = int(sys.argv[3]) if len(sys.argv) > 3 else 300
     h_x, h_z = medium_code() if code == "72" else gross_code()
     l_x, l_z = logicals(h_x, h_z)
     for p in [0.005, 0.01, 0.02, 0.03]:
         for name, cls, kw in [
                 ("bp", BpOsdDecoder, {"max_iter": 30, "osd_order": 1}),
-                ("admm", AdmmOsdDecoder, {"max_iter": 150, "osd_order": 1,
+                ("admm", AdmmOsdDecoder, {"max_iter": 100, "osd_order": 1,
                                           "max_r": 4})]:
             dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
                                 p_x=2 * p / 3, p_z=2 * p / 3, **kw)

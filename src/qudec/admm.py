@@ -33,7 +33,7 @@ def build_tanner(h):
     return idx, mask
 
 
-def parity_polytope_projection(z, parity, mask, grid=17, bisect_iters=24,
+def parity_polytope_projection(z, parity, mask, grid=9, bisect_iters=24,
                              max_r=None):
     """Project z (batch, m, d) onto per-check parity polytopes.
 
