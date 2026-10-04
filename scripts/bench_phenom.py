@@ -23,9 +23,11 @@ def main():
     code = sys.argv[1]
     d = int(sys.argv[2])
     shots = int(sys.argv[3]) if len(sys.argv) > 3 else 300
+    ps = [float(x) for x in sys.argv[4:]] if len(sys.argv) > 4 else \
+        [0.005, 0.01, 0.02, 0.03]
     h_x, h_z = medium_code() if code == "72" else gross_code()
     l_x, l_z = logicals(h_x, h_z)
-    for p in [0.005, 0.01, 0.02, 0.03]:
+    for p in ps:
         for name, cls, kw in [
                 ("bp", BpOsdDecoder, {"max_iter": 30, "osd_order": 1}),
                 ("admm", AdmmOsdDecoder, {"max_iter": 100, "osd_order": 1,

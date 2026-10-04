@@ -4,8 +4,8 @@
 # Submit one job per code so each stays short in the queue.
 #
 # Usage:
-#   sbatch hpc/run_phenom.slurm 72
-#   sbatch hpc/run_phenom.slurm 144
+#   sbatch hpc/run_phenom.slurm 72              # full p sweep
+#   sbatch hpc/run_phenom.slurm 72 0.02 0.03    # selected p values
 
 #SBATCH --job-name=qudec_phenom
 #SBATCH --output=hpc/logs/qudec_phenom_%j.out
@@ -36,9 +36,8 @@ for CAND in \
 done
 
 CODE="${1:-72}"
-
-export CUDA_LAUNCH_BLOCKING=1
+EXTRA="${@:2}"
 
 echo "=== python: ${PY} ==="
 "${PY}" -m unittest tests.test_phenom -v
-"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 300
+"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 300 ${EXTRA}
