@@ -15,6 +15,8 @@ and a `sinter`-protocol `decode_batch` interface.
 - `src/qudec/bposd.py` — batched min-sum BP (torch) + OSD post-processing
 - `src/qudec/lp.py` — LP decoding (Gu-Soleimanifar TIT 2026) with OSD
   post-processing
+- `src/qudec/admm.py` — batched ADMM solver for the parity-polytope
+  relaxation (Gu-Soleimanifar ISIT 2026)
 - `src/qudec/noise.py` — i.i.d. X/Z/depolarizing error sampling
 - `src/qudec/bench.py` — code-capacity logical error rate benchmark
 - `tests/` — exhaustive checks against brute-force MLD on small codes

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Control: phase one validation, the gross-code LER sweep, and the
-# reference bposd sweep for paper parity on one GPU node.
+# Control: phase one validation, the gross-code LER sweep, the
+# LP + OSD sweep, and the reference bposd sweep for paper parity
+# on one GPU node.
 #
 # Usage:
 #   sbatch hpc/run_test_bench.slurm
@@ -37,4 +38,5 @@ done
 echo "=== python: ${PY} ==="
 "${PY}" -m unittest discover -s tests -v
 "${PY}" -u scripts/bench_gross.py
+"${PY}" -u scripts/bench_lp_gross.py 500
 "${PY}" -u scripts/bench_gross_ref.py
