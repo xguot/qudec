@@ -137,6 +137,15 @@ class TestAdmmVariants(unittest.TestCase):
         x_w = admm_solve_batch(h, s, c_vec=w, max_iter=500).numpy()[0]
         self.assertLess(x_w[1], x_plain[1])
 
+    def test_weighted_does_not_collapse(self):
+        # large LLR weights used to clip every x to zero on the first
+        # update, locking the iteration at the trivial fixed point
+        h = np.array([[1, 1, 0], [0, 1, 1]], dtype=np.int8)
+        s = np.array([[1, 1]], dtype=np.int8)
+        w = np.array([5.0, 4.6, 5.0], dtype=np.float32)
+        x = admm_solve_batch(h, s, c_vec=w, max_iter=1000).numpy()[0]
+        self.assertGreater(float(x.sum()), 0.5)
+
     def test_ldr_smoke(self):
         h_x, h_z = steane_code()
         for sy in range(8):

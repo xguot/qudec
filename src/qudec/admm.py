@@ -201,11 +201,14 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
 
     Return qubit error indicators x (batch, n) in [0, 1]. c_vec are the
     per-column objective coefficients (log-likelihood weights per the
-    paper's Appendix C; uniform by default) and g_vec the diagonal of
-    the quadratic term (zero for the plain relaxation, -2 lambda for the
-    LDR variant). With rho large enough that g_i + rho * d_v > 0 the
-    x-update is the unique minimizer of a separable quadratic, clipped
-    to the unit cube. Tensors run on cuda when a GPU is available.
+    paper's Appendix C; uniform by default), normalized by their maximum
+    since scaling the objective leaves the LP optimum invariant while
+    keeping the x-update in a well-conditioned regime. g_vec is the
+    diagonal of the quadratic term (zero for the plain relaxation,
+    -2 lambda for the LDR variant). With rho large enough that
+    g_i + rho * d_v > 0 the x-update is the unique minimizer of a
+    separable quadratic, clipped to the unit cube. Tensors run on cuda
+    when a GPU is available.
     """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
     m, n = h.shape
@@ -223,6 +226,7 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
         c = torch.ones(n, device=dev)
     else:
         c = torch.as_tensor(c_vec, dtype=torch.float32, device=dev)
+        c = c / c.max()
     if g_vec is None:
         g = torch.zeros(n, device=dev)
     else:
@@ -277,6 +281,7 @@ def admm_ldr_solve(h, s, rho=2.0, max_iter=500, device=None, max_r=None,
         c0 = torch.ones(n, device=dev)
     else:
         c0 = torch.as_tensor(c_vec, dtype=torch.float32, device=dev)
+        c0 = c0 / c0.max()
     lam = torch.zeros(batch, n, device=dev)
     x = None
     z = None
