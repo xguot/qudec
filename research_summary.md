@@ -89,10 +89,23 @@ update; normalizing the weights by their maximum (which leaves the LP
 optimum invariant) restores proper convergence. The paper does not
 mention this normalization.
 
+2000-shot confirmation, [[72,12,6]], d = 6:
+
+- p=0.005: BP 0.00300 · ADMM 0.00250 · ADMM-w 0.00350
+- p=0.010: BP 0.02000 · ADMM 0.02150 · ADMM-w 0.01800
+- p=0.020: BP 0.11800 · ADMM 0.13800 · ADMM-w 0.12450
+
+Preliminary [[144,12,12]], d = 6, 300 shots:
+
+- p=0.005: BP 0.00667 · ADMM 0.01000 · ADMM-w 0.00333
+- p=0.010: BP 0.03333 · ADMM 0.05667 · ADMM-w 0.04333
+
 Measured answer to the open question: the LP-family code-capacity
-advantage over BP+OSD does not survive phenomenological noise for plain
-ADMM, and is recovered only to parity (with a modest low-rate edge) by
-the properly weighted variant.
+advantage over BP+OSD does not survive phenomenological noise. Plain
+ADMM degrades significantly at p = 0.020 (0.138 versus 0.118, 3.9 sigma
+at 2000 shots); the properly weighted variant repairs this to
+statistical parity everywhere, with no significant advantage. The
+300-shot hints of a low-rate edge wash out at 2000 shots.
 
 ## Known limitations
 
@@ -109,6 +122,6 @@ the properly weighted variant.
 
 ## Roadmap
 
-- Confirm the low-rate weighted advantage with a 2000-shot run.
-- Run the [[144,12,12]] code for the code-size dimension.
+- Complete the [[144,12,12]] code-size dimension at confirmation shot
+  counts.
 - Circuit-level noise through stim/sinter.

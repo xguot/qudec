@@ -11,14 +11,17 @@ question of whether the advantage survives more realistic noise. We
 implement the parity-polytope relaxation solved by exact LP and by the
 alternating direction method of multipliers (ADMM), and benchmark them
 against BP+OSD under phenomenological noise on the [[72,12,6]] bivariate
-bicycle code. Plain ADMM+OSD loses the code-capacity edge and trails
-BP+OSD at three of four rates. The LLR-weighted variant prescribed by the
-paper's Appendix C, with a normalization the paper omits, recovers parity
-and edges BP+OSD at the two lowest rates, [CONFIRM: 2000-shot verdict].
-An LDR variant with an adaptive penalty shows no consistent gain at four
-outer iterations. We also report an implementation finding: the naive
-LLR weighting collapses ADMM to the trivial fixed point, and normalizing
-the weights is required for convergence.
+bicycle code. Plain ADMM+OSD loses the code-capacity edge and, at the
+rate with the most statistical power (p = 0.02), is significantly worse
+than BP+OSD (0.138 versus 0.118, 3.9 sigma, 2000 shots). The LLR-weighted
+variant prescribed by the paper's Appendix C, with a normalization the
+paper omits, recovers statistical parity with BP+OSD at all measured
+rates but shows no significant advantage; the 300-shot hints of a
+low-rate edge wash out at 2000 shots. An LDR variant with an adaptive
+penalty shows no consistent gain at four outer iterations. We also
+report an implementation finding: the naive LLR weighting collapses ADMM
+to the trivial fixed point, and normalizing the weights is required for
+convergence.
 
 ## 1. Introduction
 
@@ -78,10 +81,9 @@ any invalid correction are flagged.
 
 ### 2.3 Benchmark protocol
 
-Fixed seeds, 300 shots per point for the comparison sweep, 2000 shots
-for the confirmation points [CONFIRM], zero invalid corrections
-throughout. Logical error rate estimated per X and Z logical sectors
-jointly.
+Fixed seeds, 300 shots per point for the comparison sweep and 2000 shots
+for the confirmation points, zero invalid corrections throughout.
+Logical error rate estimated per X and Z logical sectors jointly.
 
 ## 3. Results
 
@@ -99,17 +101,36 @@ paper's qualitative claim at the settings used here.
 
 ### 3.2 Phenomenological noise
 
-[[72,12,6]], d = 6, 300 shots:
+[[72,12,6]], d = 6, 300 shots (initial sweep):
 
 - p=0.005: BP 0.00667 · ADMM 0.00333 · ADMM-w 0.00333 · LDR 0.00333
 - p=0.010: BP 0.03333 · ADMM 0.04333 · ADMM-w 0.02333 · LDR 0.03000
 - p=0.020: BP 0.10000 · ADMM 0.14667 · ADMM-w 0.10000 · LDR 0.13000
 - p=0.030: BP 0.26333 · ADMM 0.30333 · ADMM-w 0.28333 · LDR 0.32667
 
-Per-point gaps are sub-2-sigma at 300 shots. Plain ADMM trails BP at
-three of four rates. The weighted variant recovers parity, ahead at the
-two lowest rates and marginally behind at p = 0.030. [CONFIRM: replace
-or reinforce with the 2000-shot results, including error bars.]
+[[72,12,6]], d = 6, 2000 shots (confirmation):
+
+- p=0.005: BP 0.00300 · ADMM 0.00250 · ADMM-w 0.00350
+- p=0.010: BP 0.02000 · ADMM 0.02150 · ADMM-w 0.01800
+- p=0.020: BP 0.11800 · ADMM 0.13800 · ADMM-w 0.12450
+
+The low-rate edges seen at 300 shots wash out at 2000 shots (all within
+1 sigma). At p = 0.020 the plain-ADMM deficit is significant: 0.138
+versus 0.118, 3.9 sigma (40 excess failures at 2000 shots). The weighted
+variant recovers parity, 1.3 sigma above BP, and is not significantly
+different from BP at any measured rate. Plain ADMM trails BP at three of
+four rates in the sweep and at all three confirmed rates.
+
+### 3.3 Preliminary code-size data
+
+[[144,12,12]], d = 6, 300 shots:
+
+- p=0.005: BP 0.00667 · ADMM 0.01000 · ADMM-w 0.00333
+- p=0.010: BP 0.03333 · ADMM 0.05667 · ADMM-w 0.04333
+
+The same ordering as the [[72,12,6]] data: plain ADMM worst, the
+weighted variant between plain and BP, all gaps sub-2-sigma at 300
+shots.
 
 ### 3.3 The weighting normalization
 
@@ -122,15 +143,15 @@ convergence profile. The paper does not mention this normalization.
 
 ## 4. Discussion
 
-The measured answer to the open question, at these settings: the
-LP-family code-capacity advantage over BP+OSD does not survive
-phenomenological noise for plain ADMM; the properly weighted variant
-recovers parity, with a modest low-rate edge that the 2000-shot
-confirmation [CONFIRM] does or does not firm. Limitations: one code
-size at phenom level [CONFIRM: add [[144,12,12]] results], 300-shot
-comparison points, our choice of LDR step size and outer-iteration
-count, and OSD-CS at lambda = 1 rather than the reference lambda = 60.
-Circuit-level noise via stim/sinter is the natural next step.
+The measured answer to the open question is negative: the LP-family
+code-capacity advantage over BP+OSD does not survive phenomenological
+noise. Plain ADMM degrades significantly at p = 0.020 (3.9 sigma), and
+the properly weighted variant repairs this to statistical parity without
+recovering an advantage. Limitations: the [[144,12,12]] data is
+preliminary (300 shots, sub-2-sigma), the LDR step size and outer
+iteration count are our choices, and OSD-CS uses lambda = 1 rather than
+the reference lambda = 60. Circuit-level noise via stim/sinter is the
+natural next step.
 
 ## References
 
