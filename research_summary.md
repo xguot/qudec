@@ -67,38 +67,48 @@ LP+OSD sits at or below BP+OSD at three of four points and below the
 20000-shot reference at low p, reproducing the paper's qualitative claim.
 Zero invalid corrections throughout.
 
-Phenomenological noise, [[72,12,6]], d = 6 rounds, 300 shots (Rivanna A40):
+Phenomenological noise, [[72,12,6]], d = 6 rounds, 300 shots
+(Rivanna, A6000/A40). Logical error rates for BP+OSD, plain ADMM+OSD,
+the LLR-weighted ADMM+OSD (Appendix C weights, normalized), and
+LDR-ADMM+OSD with four outer iterations:
 
-- p=0.005: ADMM 0.00333 · BP 0.00667
-- p=0.010: ADMM 0.04667 · BP 0.03333
-- p=0.020: ADMM 0.14667 · BP 0.10000
-- p=0.030: ADMM 0.30333 · BP 0.26333
+- p=0.005: BP 0.00667 · ADMM 0.00333 · ADMM-w 0.00333 · LDR 0.00333
+- p=0.010: BP 0.03333 · ADMM 0.04333 · ADMM-w 0.02333 · LDR 0.03000
+- p=0.020: BP 0.10000 · ADMM 0.14667 · ADMM-w 0.10000 · LDR 0.13000
+- p=0.030: BP 0.26333 · ADMM 0.30333 · ADMM-w 0.28333 · LDR 0.32667
 
-Zero invalid corrections throughout. Per-point gaps are sub-2-sigma, but
-the ADMM trails BP at the three highest rates, consistently on the same
-side. The measured answer to the open question, at these settings, is
-that the small code-capacity advantage of plain ADMM+OSD does not
-survive phenomenological noise: it inverts into a modest, consistent
-shortfall. The LLR-weighted and LDR variants remain untested and are the
-natural follow-up.
+Zero invalid corrections throughout; per-point gaps are sub-2-sigma at
+300 shots. Plain ADMM loses the code-capacity edge and trails BP at
+three of four rates. The LLR-weighted variant recovers parity, edging
+BP at the two lowest rates and trailing marginally at p = 0.030. The
+LDR variant shows no consistent gain at four outer iterations.
+
+Implementation finding: applying the Appendix C weights naively
+collapses the ADMM to the trivial all-zero fixed point on the first
+update; normalizing the weights by their maximum (which leaves the LP
+optimum invariant) restores proper convergence. The paper does not
+mention this normalization.
+
+Measured answer to the open question: the LP-family code-capacity
+advantage over BP+OSD does not survive phenomenological noise for plain
+ADMM, and is recovered only to parity (with a modest low-rate edge) by
+the properly weighted variant.
 
 ## Known limitations
 
-- The ADMM implementation is the paper's plain variant, not their
-  LDR-ADMM with adaptive penalties, which is where their strongest
-  claims live.
-- Untuned ADMM parameters (rho = 2.0, no over-relaxation) and a uniform
-  objective; the paper's Appendix C prescribes per-mechanism LLR
-  weights, which matter when measurement and data error rates differ.
+- The LDR variant uses a diminishing beta/sqrt(k+1) step and four outer
+  iterations; the paper does not pin beta_k, so this variant is our
+  choice rather than their verbatim algorithm.
+- Untuned ADMM parameters (rho = 2.0, no over-relaxation).
 - OSD post-processing uses the lambda = 1 combination sweep rather than
   the lambda = 60 of the reference implementation.
 - The LP solver (HiGHS) scales to code-capacity degrees only; the ADMM
   covers the time-expanded detector systems.
+- 300 shots leave the phenom gaps sub-significant; a 2000-shot run
+  would firm the low-rate weighted advantage.
 
 ## Roadmap
 
-- Sharpen the [[72,12,6]] comparison with more shots and test the
-  LLR-weighted objective and the LDR-ADMM adaptive penalty, the natural
-  strengthenings of the plain variant.
+- Confirm the low-rate weighted advantage with a 2000-shot run.
 - Run the [[144,12,12]] code for the code-size dimension.
 - Circuit-level noise through stim/sinter.
