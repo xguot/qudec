@@ -25,8 +25,14 @@ def main():
     code = sys.argv[1]
     d = int(sys.argv[2])
     shots = int(sys.argv[3]) if len(sys.argv) > 3 else 300
-    ps = [float(x) for x in sys.argv[4:]] if len(sys.argv) > 4 else \
-        [0.005, 0.01, 0.02, 0.03]
+    rest = sys.argv[4:]
+    variants = ["bp", "admm", "admm-w", "admm-ldr"]
+    ps = [0.005, 0.01, 0.02, 0.03]
+    if rest and rest[0] == "--variants":
+        variants = rest[1].split(",")
+        rest = rest[2:]
+    if rest:
+        ps = [float(x) for x in rest]
     h_x, h_z = medium_code() if code == "72" else gross_code()
     l_x, l_z = logicals(h_x, h_z)
     n = h_x.shape[1]
@@ -49,6 +55,8 @@ def main():
                 ("admm-ldr", AdmmOsdDecoder,
                  {"max_iter": 150, "osd_order": 1, "max_r": 4,
                   "ldr": True, "ldr_outer": 4})]:
+            if name not in variants:
+                continue
             dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
                                 p_x=2 * p / 3, p_z=2 * p / 3, **kw)
             t0 = time.time()
