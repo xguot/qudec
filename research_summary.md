@@ -100,12 +100,15 @@ Preliminary [[144,12,12]], d = 6, 300 shots:
 - p=0.005: BP 0.00667 · ADMM 0.01000 · ADMM-w 0.00333
 - p=0.010: BP 0.03333 · ADMM 0.05667 · ADMM-w 0.04333
 
-Measured answer to the open question: the LP-family code-capacity
-advantage over BP+OSD does not survive phenomenological noise. Plain
-ADMM degrades significantly at p = 0.020 (0.138 versus 0.118, 3.9 sigma
-at 2000 shots); the properly weighted variant repairs this to
-statistical parity everywhere, with no significant advantage. The
-300-shot hints of a low-rate edge wash out at 2000 shots.
+Measured answer at the paper's default settings: the LP-family
+code-capacity advantage over BP+OSD does not survive
+phenomenological noise. Plain ADMM degrades significantly at
+p = 0.020 (0.138 versus 0.118, 3.9 sigma at 2000 shots); the
+properly weighted variant repairs this to statistical parity
+everywhere, with no significant advantage. The 300-shot hints of
+a low-rate edge wash out at 2000 shots. The tuned confirmation
+below revises this verdict: most of the plain-ADMM deficit is
+settings-dependent.
 
 ### Tuning sweep ([[72,12,6]], d = 6, p = 0.020, 300 shots)
 
@@ -121,8 +124,31 @@ on both BP and ADMM (raw table in results/tune_72.csv):
 Rho = 4 removes most of the plain-ADMM deficit seen at the paper's
 default rho = 2: the gap to BP+OSD shrinks from 0.047 to 0.017. The
 negative result survives but narrows: tuned plain ADMM still trails
-BP+OSD at p = 0.020. These are 300-shot numbers; confirm rho = 4 at
-2000 shots before changing the paper claims.
+BP+OSD at p = 0.020. These are 300-shot numbers; the 2000-shot tuned confirmation
+follows.
+
+### Tuned confirmation ([[72,12,6]], d = 6, 2000 shots, rho = 4)
+
+- p=0.010 seed 0: BP 0.02000 · ADMM 0.01950 · ADMM-w 0.01850
+- p=0.020 seed 0: BP 0.11800 · ADMM 0.12650 · ADMM-w 0.12000
+- p=0.020 seed 1: BP 0.11450 · ADMM 0.12300 · ADMM-w 0.10500
+- p=0.020 seed 0, rho = 4, OSD-CS(60): BP 0.11450 · ADMM 0.11050 ·
+  ADMM-w 0.10800
+
+Pooled over seeds 0 and 1 (4000 shots, greedy sweep): BP 0.11625,
+ADMM 0.12475, ADMM-w 0.11250. Tuned plain ADMM trails BP by 0.0085
+(about 1.7 sigma) instead of the 0.020 gap at rho = 2 (3.9 sigma);
+the weighted variant is nominally 0.0038 below BP (sub-1-sigma).
+With the reference OSD-CS(60) on top of rho = 4, plain ADMM reaches
+0.11050, at or below BP at 2000 shots. A single 10^4-shot job OOM
+killed under the 32GB limit; run the fan-out as four 2500-shot seeds.
+
+Revised verdict: the significant plain-ADMM degradation was largely
+settings-dependent. With the tuned penalty and the reference OSD
+sweep, all LP-family variants reach statistical parity with BP+OSD
+under phenomenological noise; no variant shows a significant
+advantage. The surviving claim is parity, not degradation; firm it
+with the 2500-shot x 4-seed fan-out at p = 0.010 and 0.020.
 
 ## Known limitations
 

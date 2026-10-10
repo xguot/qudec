@@ -61,7 +61,8 @@ time-expanded check matrix with d data blocks and d measurement blocks.
   tie breaking (their Sec. V). Code capacity only; the subset
   formulation grows exponentially at detector scale.
 - **ADMM+OSD**: the parity-polytope relaxation (their QP (8) with g = 0,
-  c = 1), plain ADMM with rho = 2.0. The projection onto the parity
+  c = 1), plain ADMM with rho = 2.0 (tuned runs use rho = 4.0, chosen
+  by the Section 3.2 sweep). The projection onto the parity
   polytope is exact, computed from the two-slice representation
   [Barman et al.] with a segment walk that resolves roots at clip and
   sort-switch breakpoints.
@@ -115,11 +116,27 @@ paper's qualitative claim at the settings used here.
 - p=0.020: BP 0.11800 · ADMM 0.13800 · ADMM-w 0.12450
 
 The low-rate edges seen at 300 shots wash out at 2000 shots (all within
-1 sigma). At p = 0.020 the plain-ADMM deficit is significant: 0.138
-versus 0.118, 3.9 sigma (40 excess failures at 2000 shots). The weighted
-variant recovers parity, 1.3 sigma above BP, and is not significantly
-different from BP at any measured rate. Plain ADMM trails BP at three of
-four rates in the sweep and at all three confirmed rates.
+1 sigma). At p = 0.020 the plain-ADMM deficit at the default rho = 2 is
+significant: 0.138 versus 0.118, 3.9 sigma (40 excess failures at 2000
+shots). The weighted variant recovers parity, 1.3 sigma above BP, and
+is not significantly different from BP at any measured rate. Plain
+ADMM trails BP at three of four rates in the sweep and at all three
+confirmed rates.
+
+Tuned confirmation at rho = 4, 2000 shots per point (seed 0, seed 1
+pooled to 4000 shots):
+
+- p=0.020: BP 0.11625 · ADMM 0.12475 · ADMM-w 0.11250
+- p=0.020, OSD-CS(60): BP 0.11450 · ADMM 0.11050 · ADMM-w 0.10800
+- p=0.010: BP 0.02000 · ADMM 0.01950 · ADMM-w 0.01850
+
+Tuning the penalty shrinks the plain-ADMM deficit from 0.020 (3.9
+sigma) to 0.0085 (about 1.7 sigma), and the reference OSD-CS(60)
+sweep removes it entirely at 2000 shots: plain ADMM lands at or
+below BP. The weighted variant is nominally below BP throughout.
+None of the gaps is significant at these shot counts; a 10^4-shot
+fan-out (four 2500-shot seeds) is queued to firm the parity
+verdict.
 
 ### 3.3 Preliminary code-size data
 
@@ -143,15 +160,19 @@ convergence profile. The paper does not mention this normalization.
 
 ## 4. Discussion
 
-The measured answer to the open question is negative: the LP-family
-code-capacity advantage over BP+OSD does not survive phenomenological
-noise. Plain ADMM degrades significantly at p = 0.020 (3.9 sigma), and
-the properly weighted variant repairs this to statistical parity without
-recovering an advantage. Limitations: the [[144,12,12]] data is
-preliminary (300 shots, sub-2-sigma), the LDR step size and outer
-iteration count are our choices, and OSD-CS uses lambda = 1 rather than
-the reference lambda = 60. Circuit-level noise via stim/sinter is the
-natural next step.
+The measured answer to the open question is negative with a
+qualification: the LP-family code-capacity advantage over BP+OSD
+does not survive phenomenological noise, but the significant
+plain-ADMM degradation (3.9 sigma at rho = 2) is largely
+settings-dependent. With the tuned penalty rho = 4 and the
+reference OSD-CS(lambda = 60) sweep, every LP-family variant
+reaches statistical parity with BP+OSD, and none shows a
+significant advantage. The surviving claim is parity, not
+degradation. Limitations: the tuned and lambda = 60 runs are
+2000 shots per point (a 10^4-shot fan-out is queued), the
+[[144,12,12]] data is preliminary (300 shots, sub-2-sigma), the
+LDR step size and outer iteration count are our choices, and
+circuit-level noise via stim/sinter is the natural next step.
 
 ## References
 
