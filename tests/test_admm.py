@@ -79,7 +79,7 @@ class TestAdmm(unittest.TestCase):
             s = np.array([(sy >> j) & 1 for j in range(3)], np.int8)
             x_lp = solve_lp(h_z, s)
             x_ad = admm_solve_batch(
-                h_z, s.reshape(1, -1), max_iter=800).numpy()[0]
+                h_z, s.reshape(1, -1), max_iter=800, device="cpu").numpy()[0]
             # the LP can have multiple optima (integral vs fractional),
             # so compare optimal values, not solutions
             self.assertLess(
@@ -132,9 +132,11 @@ class TestAdmmVariants(unittest.TestCase):
     def test_weighted_pushes_low_weight_column(self):
         h = np.array([[1, 1]], dtype=np.int8)
         s = np.array([[1]], dtype=np.int8)
-        x_plain = admm_solve_batch(h, s, max_iter=500).numpy()[0]
+        x_plain = admm_solve_batch(h, s, max_iter=500,
+                                   device="cpu").numpy()[0]
         w = np.array([0.2, 10.0], dtype=np.float32)
-        x_w = admm_solve_batch(h, s, c_vec=w, max_iter=500).numpy()[0]
+        x_w = admm_solve_batch(h, s, c_vec=w, max_iter=500,
+                               device="cpu").numpy()[0]
         self.assertLess(x_w[1], x_plain[1])
 
     def test_weighted_does_not_collapse(self):
@@ -143,7 +145,8 @@ class TestAdmmVariants(unittest.TestCase):
         h = np.array([[1, 1, 0], [0, 1, 1]], dtype=np.int8)
         s = np.array([[1, 1]], dtype=np.int8)
         w = np.array([5.0, 4.6, 5.0], dtype=np.float32)
-        x = admm_solve_batch(h, s, c_vec=w, max_iter=1000).numpy()[0]
+        x = admm_solve_batch(h, s, c_vec=w, max_iter=1000,
+                               device="cpu").numpy()[0]
         self.assertGreater(float(x.sum()), 0.5)
 
     def test_ldr_smoke(self):
@@ -151,7 +154,7 @@ class TestAdmmVariants(unittest.TestCase):
         for sy in range(8):
             s = np.array([(sy >> j) & 1 for j in range(3)], np.int8)
             x = admm_ldr_solve(h_z, s.reshape(1, -1), max_iter=300,
-                               outer=3).numpy()[0]
+                               outer=3, device="cpu").numpy()[0]
             self.assertTrue(np.all((x >= 0) & (x <= 1)))
 
 
