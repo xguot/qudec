@@ -122,6 +122,12 @@ statistical parity everywhere, with no significant advantage. The
 
 ## Roadmap
 
-- Complete the [[144,12,12]] code-size dimension at confirmation shot
+- Tune ADMM (rho, over-relaxation, OSD lambda) and re-run the
+  confirmation with the tuned parameters.
+- Raise the [[72,12,6]] confirmation to 10^4-10^5 shots per point.
+- Complete the [[144,12,12]] phenom comparison at confirmation shot
   counts.
-- Circuit-level noise through stim/sinter.
+- Preliminary circuit-level noise via stim/sinter on a small code.
+
+See docs/plan.md for the ordered plan, per-item rationale, and the
+Dec 15 timeline.
