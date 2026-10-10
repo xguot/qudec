@@ -107,6 +107,23 @@ at 2000 shots); the properly weighted variant repairs this to
 statistical parity everywhere, with no significant advantage. The
 300-shot hints of a low-rate edge wash out at 2000 shots.
 
+### Tuning sweep ([[72,12,6]], d = 6, p = 0.020, 300 shots)
+
+Plain ADMM over rho x over-relaxation alpha, plus OSD-CS(lambda = 60)
+on both BP and ADMM (raw table in results/tune_72.csv):
+
+- bp 0.10000; bp-lam60 0.10000 (OSD-CS(60) does not move the BP
+  baseline at this point)
+- admm at rho = 2 (paper default) 0.14667; admm-lam60 0.13667
+- rho = 1 0.16333; rho = 2 0.14667; rho = 4 0.11667
+- alpha at rho = 4: 1.0 0.11667, 1.5 0.11667, 1.8 0.12000 (weak effect)
+
+Rho = 4 removes most of the plain-ADMM deficit seen at the paper's
+default rho = 2: the gap to BP+OSD shrinks from 0.047 to 0.017. The
+negative result survives but narrows: tuned plain ADMM still trails
+BP+OSD at p = 0.020. These are 300-shot numbers; confirm rho = 4 at
+2000 shots before changing the paper claims.
+
 ## Known limitations
 
 - The LDR variant uses a diminishing beta/sqrt(k+1) step and four outer
@@ -122,8 +139,9 @@ statistical parity everywhere, with no significant advantage. The
 
 ## Roadmap
 
-- Tune ADMM (rho, over-relaxation, OSD lambda) and re-run the
-  confirmation with the tuned parameters.
+- Tune ADMM (rho, over-relaxation, OSD lambda) - swept at 300
+  shots; rho = 4 removes most of the plain-ADMM deficit at
+  rho = 2. Confirm rho = 4 at 2000 shots.
 - Raise the [[72,12,6]] confirmation to 10^4-10^5 shots per point.
 - Complete the [[144,12,12]] phenom comparison at confirmation shot
   counts.
