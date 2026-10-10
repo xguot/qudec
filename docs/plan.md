@@ -67,3 +67,19 @@ Roughly nine weeks, Oct 10 to Dec 15.
 
 Item 4 is deliberately deferred; if weeks 1-6 slip, item 4 is the
 cut.
+
+## Implementation status
+
+- Decoder fidelity: OSD-CS(lambda = 60) exhaustive sweep,
+  ADMM over-relaxation alpha, and the BP reference
+  schedule 1 - 2**(-t) implemented; osd_lam/alpha
+  exposed on all decoders. Defaults reproduce the
+  committed benchmark behavior.
+- bench_tune.py + hpc/run_tune.slurm cover item 1.
+- bench_phenom.py --seed and the QUDEC_SHOTS/QUDEC_SEED
+  fan-out on run_phenom_confirm.slurm and
+  run_phenom_144.slurm cover items 2 and 3.
+- Item 4: stim memory circuit, dem-matrix decoders,
+  smoke validation, bench_circuit.py, and
+  hpc/run_circuit.slurm implemented; awaiting cluster
+  validation and runs.

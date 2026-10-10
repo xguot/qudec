@@ -19,6 +19,9 @@ reference = [
     "ldpc",
     "bposd",
 ]
+circuit = [
+    "stim",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
