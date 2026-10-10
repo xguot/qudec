@@ -8,7 +8,8 @@ bicycle codes.
 Usage:
 
     python -u scripts/bench_phenom.py <72|144> <rounds> [shots] \\
-        [--variants a,b] [--seed N] [--osd-lam K] [p ...]
+        [--variants a,b] [--seed N] [--osd-lam K] [--admm-rho R] \\
+        [--admm-alpha A] [p ...]
 
 Fan out high-shot confirmations with distinct seeds per job so the
 sampled shots never repeat across jobs.
@@ -34,6 +35,8 @@ def parse_args(argv):
     ps = [0.005, 0.01, 0.02, 0.03]
     seed = 0
     osd_lam = None
+    admm_rho = None
+    admm_alpha = None
     rest = argv[4:]
     i = 0
     while i < len(rest):
@@ -47,16 +50,24 @@ def parse_args(argv):
         elif tok == "--osd-lam":
             osd_lam = int(rest[i + 1])
             i += 2
+        elif tok == "--admm-rho":
+            admm_rho = float(rest[i + 1])
+            i += 2
+        elif tok == "--admm-alpha":
+            admm_alpha = float(rest[i + 1])
+            i += 2
         elif tok.startswith("-"):
             raise SystemExit(f"unknown option {tok}")
         else:
             ps = [float(t) for t in rest[i:]]
             break
-    return code, d, shots, variants, ps, seed, osd_lam
+    return (code, d, shots, variants, ps, seed, osd_lam,
+            admm_rho, admm_alpha)
 
 
 def main():
-    code, d, shots, variants, ps, seed, osd_lam = parse_args(sys.argv)
+    (code, d, shots, variants, ps, seed, osd_lam, admm_rho,
+     admm_alpha) = parse_args(sys.argv)
     h_x, h_z = medium_code() if code == "72" else gross_code()
     l_x, l_z = logicals(h_x, h_z)
     n = h_x.shape[1]
@@ -83,6 +94,10 @@ def main():
                 continue
             if osd_lam is not None:
                 kw = dict(kw, osd_lam=osd_lam)
+            if admm_rho is not None and name.startswith("admm"):
+                kw["rho"] = admm_rho
+            if admm_alpha is not None and name.startswith("admm"):
+                kw["alpha"] = admm_alpha
             dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
                                 p_x=2 * p / 3, p_z=2 * p / 3, **kw)
             t0 = time.time()
