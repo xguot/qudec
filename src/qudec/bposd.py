@@ -3,7 +3,7 @@
 import numpy as np
 import torch
 
-from qudec.codes import gf2_rref
+from qudec.osd import osd_decode
 
 
 class BpOsdDecoder:
@@ -14,10 +14,12 @@ class BpOsdDecoder:
     l_x, l_z: logical operator matrices, each k x n
     p_x, p_z: marginal per-qubit error probabilities for the channel LLR
     osd_order: 0 for OSD-0, 1 for OSD-0 plus the combination sweep (OSD-CS)
+    osd_lam: set to run the reference exhaustive OSD-CS(lambda) sweep
+    alpha: min-sum scaling; None selects the reference schedule 1 - 2**(-t)
     """
 
     def __init__(self, h_x, h_z, l_x, l_z, p_x, p_z,
-                 max_iter=30, alpha=0.9, osd_order=1):
+                 max_iter=30, alpha=0.9, osd_order=1, osd_lam=None):
         self.h_x = h_x.astype(np.int8)
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
@@ -27,6 +29,7 @@ class BpOsdDecoder:
         self.max_iter = max_iter
         self.alpha = alpha
         self.osd_order = osd_order
+        self.osd_lam = osd_lam
 
     def _bp(self, h, s, llr):
         """Run min-sum BP on check matrix h for syndromes s.
@@ -40,7 +43,8 @@ class BpOsdDecoder:
         batch, n = s.shape[0], a.shape[1]
         big = 1e4
         l_vc = a.unsqueeze(0) * l_ch.view(1, 1, n)
-        for _ in range(self.max_iter):
+        for t in range(self.max_iter):
+            a_t = self.alpha if self.alpha is not None else 1.0 - 2.0 ** (-(t + 1))
             abs_l = torch.where(a > 0, l_vc.abs(), big)
             amin, _ = abs_l.min(dim=2)
             asecond = torch.where(
@@ -52,7 +56,7 @@ class BpOsdDecoder:
             parity = (neg.sum(dim=2) + s) % 2
             sign = (1 - 2 * parity).unsqueeze(2) * (
                 1 - 2 * (l_vc < 0).float())
-            m_cv = sign * mag * self.alpha
+            m_cv = sign * mag * a_t
             sum_in = m_cv.sum(dim=1)
             l_vc = a.unsqueeze(0) * (
                 l_ch.view(1, 1, n) + sum_in.unsqueeze(1) - m_cv)
@@ -64,24 +68,7 @@ class BpOsdDecoder:
         order: column permutation, ascending LLR (most likely error first).
         Return the per-qubit correction (n,) int8.
         """
-        hp = h[:, order]
-        aug = np.concatenate([hp, s.reshape(-1, 1)], axis=1)
-        rref, pivots = gf2_rref(aug)
-        r = len(pivots)
-        e = np.zeros(h.shape[1], dtype=np.int8)
-        e[pivots] = rref[:r, -1]
-        if self.osd_order >= 1:
-            pivot_set = set(pivots.tolist())
-            for j in range(h.shape[1]):
-                if j in pivot_set:
-                    continue
-                cand = e[pivots] ^ rref[:r, j]
-                if cand.sum() + (e[j] ^ 1) < e[pivots].sum() + e[j]:
-                    e[pivots] = cand
-                    e[j] ^= 1
-        corr = np.zeros(h.shape[1], dtype=np.int8)
-        corr[order] = e
-        return corr
+        return osd_decode(h, s, order, self.osd_order, self.osd_lam)
 
     def decode_corrections(self, sx, sz):
         """Decode syndromes sx (batch, m_z) and sz (batch, m_x).

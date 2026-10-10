@@ -132,7 +132,7 @@ The same ordering as the [[72,12,6]] data: plain ADMM worst, the
 weighted variant between plain and BP, all gaps sub-2-sigma at 300
 shots.
 
-### 3.3 The weighting normalization
+### 3.4 The weighting normalization
 
 Applying the Appendix C weights verbatim produces all-zero corrections:
 with c_i near 5 the first x-update clips every coordinate to zero and

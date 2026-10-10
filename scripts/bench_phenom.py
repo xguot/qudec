@@ -7,7 +7,11 @@ bicycle codes.
 
 Usage:
 
-    python -u scripts/bench_phenom.py <72|144> <rounds> [shots]
+    python -u scripts/bench_phenom.py <72|144> <rounds> [shots] \\
+        [--variants a,b] [--seed N] [--osd-lam K] [p ...]
+
+Fan out high-shot confirmations with distinct seeds per job so the
+sampled shots never repeat across jobs.
 """
 
 import sys
@@ -21,18 +25,38 @@ from qudec.codes import gross_code, logicals, medium_code
 from qudec.phenom import PhenomDecoder, benchmark_phenom
 
 
-def main():
-    code = sys.argv[1]
-    d = int(sys.argv[2])
-    shots = int(sys.argv[3]) if len(sys.argv) > 3 else 300
-    rest = sys.argv[4:]
+def parse_args(argv):
+    """Return (code, rounds, shots, variants, ps, seed, osd_lam)."""
+    code = argv[1]
+    d = int(argv[2])
+    shots = int(argv[3]) if len(argv) > 3 else 300
     variants = ["bp", "admm", "admm-w", "admm-ldr"]
     ps = [0.005, 0.01, 0.02, 0.03]
-    if rest and rest[0] == "--variants":
-        variants = rest[1].split(",")
-        rest = rest[2:]
-    if rest:
-        ps = [float(x) for x in rest]
+    seed = 0
+    osd_lam = None
+    rest = argv[4:]
+    i = 0
+    while i < len(rest):
+        tok = rest[i]
+        if tok == "--variants":
+            variants = rest[i + 1].split(",")
+            i += 2
+        elif tok == "--seed":
+            seed = int(rest[i + 1])
+            i += 2
+        elif tok == "--osd-lam":
+            osd_lam = int(rest[i + 1])
+            i += 2
+        elif tok.startswith("-"):
+            raise SystemExit(f"unknown option {tok}")
+        else:
+            ps = [float(t) for t in rest[i:]]
+            break
+    return code, d, shots, variants, ps, seed, osd_lam
+
+
+def main():
+    code, d, shots, variants, ps, seed, osd_lam = parse_args(sys.argv)
     h_x, h_z = medium_code() if code == "72" else gross_code()
     l_x, l_z = logicals(h_x, h_z)
     n = h_x.shape[1]
@@ -57,18 +81,20 @@ def main():
                   "ldr": True, "ldr_outer": 4})]:
             if name not in variants:
                 continue
+            if osd_lam is not None:
+                kw = dict(kw, osd_lam=osd_lam)
             dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
                                 p_x=2 * p / 3, p_z=2 * p / 3, **kw)
             t0 = time.time()
             res = benchmark_phenom(dec, h_x, h_z, l_x, l_z, p, d, shots,
-                                   seed=0)
+                                   seed=seed)
             out = ("[{code}] {name} p={p:5.3f} ler={ler:.5f} "
                    "ler_x={lx:.5f} ler_z={lz:.5f} invalid={ix}+{iz} "
-                   "{secs:.1f}s").format(
+                   "seed={seed} {secs:.1f}s").format(
                 code=code, name=name, p=p, ler=res["ler"],
                 lx=res["ler_x"], lz=res["ler_z"],
                 ix=res["invalid_x"], iz=res["invalid_z"],
-                secs=time.time() - t0)
+                seed=seed, secs=time.time() - t0)
             print(out)
 
 

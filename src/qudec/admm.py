@@ -12,8 +12,8 @@ decoder's ordering, with integrality |x_i - 1/2| as reliability.
 import numpy as np
 import torch
 
-from qudec.codes import gf2_rref
 from qudec.lp import syndrome_distance
+from qudec.osd import osd_decode
 
 
 def build_tanner(h):
@@ -265,8 +265,8 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
     return x
 
 
-def admm_ldr_solve(h, s, rho=2.0, max_iter=500, device=None, max_r=None,
-                   outer=5, beta=1.0, c_vec=None, tol=1e-5):
+def admm_ldr_solve(h, s, rho=2.0, alpha=1.0, max_iter=500, device=None,
+                   max_r=None, outer=5, beta=1.0, c_vec=None, tol=1e-5):
     """LDR-ADMM: Lagrangian dual relaxation with the adaptive penalty.
 
     Outer loop updates lambda by the subgradient x - x**2 with a
@@ -288,9 +288,9 @@ def admm_ldr_solve(h, s, rho=2.0, max_iter=500, device=None, max_r=None,
     y = None
     for k in range(outer):
         x, z, y = admm_solve_batch(
-            h, s, rho=rho, max_iter=max_iter, device=dev, max_r=max_r,
-            c_vec=(c0 + lam), g_vec=(-2.0 * lam), x_init=x, z_init=z,
-            y_init=y, return_state=True)
+            h, s, rho=rho, alpha=alpha, max_iter=max_iter, device=dev,
+            max_r=max_r, c_vec=(c0 + lam), g_vec=(-2.0 * lam),
+            x_init=x, z_init=z, y_init=y, return_state=True)
         if (x - x * x).abs().max().item() <= tol:
             break
         lam = lam + (beta / (k + 1) ** 0.5) * (x - x * x)
@@ -306,8 +306,9 @@ class AdmmOsdDecoder:
     """
 
     def __init__(self, h_x, h_z, l_x, l_z, p_x=0.05, p_z=0.05, osd_order=1,
-                 rho=2.0, max_iter=500, max_r=None, weights_x=None,
-                 weights_z=None, ldr=False, ldr_outer=5, ldr_beta=1.0):
+                 osd_lam=None, rho=2.0, alpha=1.0, max_iter=500,
+                 max_r=None, weights_x=None, weights_z=None, ldr=False,
+                 ldr_outer=5, ldr_beta=1.0):
         self.h_x = h_x.astype(np.int8)
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
@@ -315,7 +316,9 @@ class AdmmOsdDecoder:
         self.p_x = float(p_x)
         self.p_z = float(p_z)
         self.osd_order = osd_order
+        self.osd_lam = osd_lam
         self.rho = rho
+        self.alpha = alpha
         self.max_iter = max_iter
         self.max_r = max_r
         self.weights_x = weights_x
@@ -330,24 +333,7 @@ class AdmmOsdDecoder:
         order: column permutation, most likely error first. Return the
         per-qubit correction (n,) int8.
         """
-        hp = h[:, order]
-        aug = np.concatenate([hp, s.reshape(-1, 1)], axis=1)
-        rref, pivots = gf2_rref(aug)
-        r = len(pivots)
-        e = np.zeros(h.shape[1], dtype=np.int8)
-        e[pivots] = rref[:r, -1]
-        if self.osd_order >= 1:
-            pivot_set = set(pivots.tolist())
-            for j in range(h.shape[1]):
-                if j in pivot_set:
-                    continue
-                cand = e[pivots] ^ rref[:r, j]
-                if cand.sum() + (e[j] ^ 1) < e[pivots].sum() + e[j]:
-                    e[pivots] = cand
-                    e[j] ^= 1
-        corr = np.zeros(h.shape[1], dtype=np.int8)
-        corr[order] = e
-        return corr
+        return osd_decode(h, s, order, self.osd_order, self.osd_lam)
 
     def _decode_osd(self, h, s, x):
         """OSD on one shot with ADMM indicators x as reliabilities."""
@@ -360,7 +346,8 @@ class AdmmOsdDecoder:
 
         Return (corr_x, corr_z), each (batch, n) int8 per-qubit corrections.
         """
-        kw = dict(rho=self.rho, max_iter=self.max_iter, max_r=self.max_r)
+        kw = dict(rho=self.rho, alpha=self.alpha, max_iter=self.max_iter,
+                  max_r=self.max_r)
         if self.ldr:
             x_x = admm_ldr_solve(self.h_z, sx, outer=self.ldr_outer,
                                  beta=self.ldr_beta, c_vec=self.weights_x,

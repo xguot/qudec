@@ -13,7 +13,7 @@ import numpy as np
 from scipy import sparse
 from scipy.optimize import linprog
 
-from qudec.codes import gf2_rref
+from qudec.osd import osd_decode
 
 
 def parity_subsets(neighbors, synd_bit):
@@ -122,7 +122,8 @@ class LpOsdDecoder:
     sweep (OSD-CS).
     """
 
-    def __init__(self, h_x, h_z, l_x, l_z, p_x=0.05, p_z=0.05, osd_order=1):
+    def __init__(self, h_x, h_z, l_x, l_z, p_x=0.05, p_z=0.05, osd_order=1,
+                 osd_lam=None):
         self.h_x = h_x.astype(np.int8)
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
@@ -130,6 +131,7 @@ class LpOsdDecoder:
         self.p_x = float(p_x)
         self.p_z = float(p_z)
         self.osd_order = osd_order
+        self.osd_lam = osd_lam
 
     def _osd(self, h, s, order):
         """Run OSD post-processing on h with syndrome s.
@@ -137,24 +139,7 @@ class LpOsdDecoder:
         order: column permutation, most likely error first. Return the
         per-qubit correction (n,) int8.
         """
-        hp = h[:, order]
-        aug = np.concatenate([hp, s.reshape(-1, 1)], axis=1)
-        rref, pivots = gf2_rref(aug)
-        r = len(pivots)
-        e = np.zeros(h.shape[1], dtype=np.int8)
-        e[pivots] = rref[:r, -1]
-        if self.osd_order >= 1:
-            pivot_set = set(pivots.tolist())
-            for j in range(h.shape[1]):
-                if j in pivot_set:
-                    continue
-                cand = e[pivots] ^ rref[:r, j]
-                if cand.sum() + (e[j] ^ 1) < e[pivots].sum() + e[j]:
-                    e[pivots] = cand
-                    e[j] ^= 1
-        corr = np.zeros(h.shape[1], dtype=np.int8)
-        corr[order] = e
-        return corr
+        return osd_decode(h, s, order, self.osd_order, self.osd_lam)
 
     def _decode_side(self, h, s):
         """Decode one side of the CSS code: solve the LP, then OSD.

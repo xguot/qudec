@@ -1,10 +1,15 @@
 #!/bin/bash
-# Control: code-size dimension on the [[144,12,12]] gross code at the
-# low-rate regime where the weighted-ADMM edge showed up. Runs BP, plain
-# ADMM, and weighted ADMM at the given p values with 300 shots each.
+# Control: code-size dimension on the [[144,12,12]] gross code. Runs BP,
+# plain ADMM, and weighted ADMM at the given p values. Shots and seed
+# come from QUDEC_SHOTS/QUDEC_SEED.
 #
 # Usage:
-#   sbatch hpc/run_phenom_144.slurm
+#   sbatch hpc/run_phenom_144.slurm                          # 300 shots
+#   QUDEC_SHOTS=2500 QUDEC_SEED=0 sbatch hpc/run_phenom_144.slurm 0.005
+#   QUDEC_SHOTS=2500 QUDEC_SEED=1 sbatch hpc/run_phenom_144.slurm 0.005
+#
+# Sizing from hpc/logs: 300 shots at p = 0.010 take about 13 minutes
+# per ADMM variant, so 2500 shots fit the 12-hour limit per p.
 
 #SBATCH --job-name=qudec_144
 #SBATCH --output=hpc/logs/qudec_144_%j.out
@@ -15,7 +20,7 @@
 #SBATCH --constraint="a6000|a40"
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=4:00:00
+#SBATCH --time=12:00:00
 
 set -euo pipefail
 
@@ -35,10 +40,15 @@ for CAND in \
     fi
 done
 
+SHOTS="${QUDEC_SHOTS:-300}"
+SEED="${QUDEC_SEED:-0}"
+
 EXTRA="${@}"
 if [[ -z "${EXTRA}" ]]; then
     EXTRA="0.005 0.010"
 fi
 
 echo "=== python: ${PY} ==="
-"${PY}" -u scripts/bench_phenom.py 144 6 300 --variants bp,admm,admm-w ${EXTRA}
+echo "=== shots: ${SHOTS} seed: ${SEED} ==="
+"${PY}" -u scripts/bench_phenom.py 144 6 "${SHOTS}" \
+    --variants bp,admm,admm-w --seed "${SEED}" ${EXTRA}
