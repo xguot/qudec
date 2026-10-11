@@ -74,6 +74,10 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
     m_z = h_z.shape[0]
     m_x = h_x.shape[0]
     c = stim.Circuit()
+
+    def rec(idx):
+        """Convert an absolute measurement index to a stim rec lookback."""
+        return stim.target_rec(idx - c.num_measurements)
     for q in range(n):
         c.append("R", [q])
         c.append("DEPOLARIZE1", [q], p)
@@ -114,16 +118,16 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
         if r == 0:
             if basis == "Z":
                 for i in range(m_z):
-                    c.append("DETECTOR", [stim.target_rec(meas_z[i])])
+                    c.append("DETECTOR", [rec(meas_z[i])])
         else:
             for i in range(m_z):
                 c.append("DETECTOR",
-                         [stim.target_rec(meas_z[-m_z + i]),
-                          stim.target_rec(meas_z[-2 * m_z + i])])
+                         [rec(meas_z[-m_z + i]),
+                          rec(meas_z[-2 * m_z + i])])
             for i in range(m_x):
                 c.append("DETECTOR",
-                         [stim.target_rec(meas_x[-m_x + i]),
-                          stim.target_rec(meas_x[-2 * m_x + i])])
+                         [rec(meas_x[-m_x + i]),
+                          rec(meas_x[-2 * m_x + i])])
     for q in range(n):
         c.append("DEPOLARIZE1", [q], p)
         if basis == "X":
@@ -134,22 +138,22 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
     rec_data = c.num_measurements - n
     if basis == "Z":
         for i in range(m_z):
-            det = [stim.target_rec(meas_z[-m_z + i])]
+            det = [rec(meas_z[-m_z + i])]
             for q in np.nonzero(h_z[i])[0]:
-                det.append(stim.target_rec(rec_data + int(q)))
+                det.append(rec(rec_data + int(q)))
             c.append("DETECTOR", det)
         for row in l_z:
-            obs = [stim.target_rec(rec_data + int(q))
+            obs = [rec(rec_data + int(q))
                    for q in np.nonzero(row)[0]]
             c.append("OBSERVABLE_INCLUDE", obs, 0)
     else:
         for i in range(m_x):
-            det = [stim.target_rec(meas_x[-m_x + i])]
+            det = [rec(meas_x[-m_x + i])]
             for q in np.nonzero(h_x[i])[0]:
-                det.append(stim.target_rec(rec_data + int(q)))
+                det.append(rec(rec_data + int(q)))
             c.append("DETECTOR", det)
         for row in l_x:
-            obs = [stim.target_rec(rec_data + int(q))
+            obs = [rec(rec_data + int(q))
                    for q in np.nonzero(row)[0]]
             c.append("OBSERVABLE_INCLUDE", obs, 0)
     return c
