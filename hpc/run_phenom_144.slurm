@@ -19,7 +19,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="a6000|a40"
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32GB
+#SBATCH --mem=64GB
 #SBATCH --time=12:00:00
 
 set -euo pipefail
@@ -42,6 +42,7 @@ done
 
 SHOTS="${QUDEC_SHOTS:-300}"
 SEED="${QUDEC_SEED:-0}"
+VARIANTS="${QUDEC_VARIANTS:-bp,admm,admm-w}"
 
 EXTRA="${@}"
 if [[ -z "${EXTRA}" ]]; then
@@ -51,4 +52,4 @@ fi
 echo "=== python: ${PY} ==="
 echo "=== shots: ${SHOTS} seed: ${SEED} ==="
 "${PY}" -u scripts/bench_phenom.py 144 6 "${SHOTS}" \
-    --variants bp,admm,admm-w --seed "${SEED}" ${EXTRA}
+    --variants "${VARIANTS}" --seed "${SEED}" ${EXTRA}
