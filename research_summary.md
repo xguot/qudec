@@ -127,28 +127,36 @@ negative result survives but narrows: tuned plain ADMM still trails
 BP+OSD at p = 0.020. These are 300-shot numbers; the 2000-shot tuned confirmation
 follows.
 
-### Tuned confirmation ([[72,12,6]], d = 6, 2000 shots, rho = 4)
+### Complete fan-out ([[72,12,6]], d = 6, rho = 4, 10^4 shots per cell)
 
-- p=0.010 seed 0: BP 0.02000 · ADMM 0.01950 · ADMM-w 0.01850
-- p=0.020 seed 0: BP 0.11800 · ADMM 0.12650 · ADMM-w 0.12000
-- p=0.020 seed 1: BP 0.11450 · ADMM 0.12300 · ADMM-w 0.10500
-- p=0.020 seed 0, rho = 4, OSD-CS(60): BP 0.11450 · ADMM 0.11050 ·
-  ADMM-w 0.10800
+Four independent 2500-shot seeds per setting. The 2000-shot runs
+share seed 0 with the first fan-out cell and are superseded. Zero
+invalid corrections throughout.
 
-Pooled over seeds 0 and 1 (4000 shots, greedy sweep): BP 0.11625,
-ADMM 0.12475, ADMM-w 0.11250. Tuned plain ADMM trails BP by 0.0085
-(about 1.7 sigma) instead of the 0.020 gap at rho = 2 (3.9 sigma);
-the weighted variant is nominally 0.0038 below BP (sub-1-sigma).
-With the reference OSD-CS(60) on top of rho = 4, plain ADMM reaches
-0.11050, at or below BP at 2000 shots. A single 10^4-shot job OOM
-killed under the 32GB limit; run the fan-out as four 2500-shot seeds.
+Greedy OSD sweep:
+- p=0.020: BP 0.11700 · ADMM 0.12170 · ADMM-w 0.11000
+- p=0.010: BP 0.02230 · ADMM 0.02220 · ADMM-w 0.02110
 
-Revised verdict: the significant plain-ADMM degradation was largely
-settings-dependent. With the tuned penalty and the reference OSD
-sweep, all LP-family variants reach statistical parity with BP+OSD
-under phenomenological noise; no variant shows a significant
-advantage. The surviving claim is parity, not degradation; firm it
-with the 2500-shot x 4-seed fan-out at p = 0.010 and 0.020.
+OSD-CS(lambda = 60):
+- p=0.020: BP 0.11440 · ADMM 0.11040 · ADMM-w 0.10200
+
+Deltas against BP at the same OSD setting (two-sample, pooled):
+- greedy p=0.020: ADMM +0.00470 (1.0 sigma), ADMM-w -0.00700
+  (-1.6 sigma)
+- OSD-CS(60) p=0.020: ADMM -0.00400 (-0.9 sigma), ADMM-w -0.01240
+  (-2.8 sigma)
+- greedy p=0.010: ADMM -0.00010, ADMM-w -0.00120 (-0.6 sigma)
+
+Final verdict: the significant plain-ADMM degradation at the default
+rho = 2 was settings-dependent and washes out at 10^4 shots once
+tuned (1.0 sigma). Everything reaches parity except one cell: the
+LLR-weighted ADMM with rho = 4 and OSD-CS(60) sits 0.0124 below
+BP+OSD at p = 0.020 (2.8 sigma, nominal p about 0.005, uncorrected
+for the multiple settings tested). A small advantage may survive
+phenomenological noise for the properly configured weighted variant.
+Run a targeted replication at that cell (seeds 4-7) before asserting
+it, and note the GPU run-to-run nondeterminism of the ADMM in the
+methods.
 
 ## Known limitations
 

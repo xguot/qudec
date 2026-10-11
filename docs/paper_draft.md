@@ -123,20 +123,19 @@ is not significantly different from BP at any measured rate. Plain
 ADMM trails BP at three of four rates in the sweep and at all three
 confirmed rates.
 
-Tuned confirmation at rho = 4, 2000 shots per point (seed 0, seed 1
-pooled to 4000 shots):
+Complete fan-out at rho = 4, four independent 2500-shot seeds
+(10^4 shots per cell):
 
-- p=0.020: BP 0.11625 · ADMM 0.12475 · ADMM-w 0.11250
-- p=0.020, OSD-CS(60): BP 0.11450 · ADMM 0.11050 · ADMM-w 0.10800
-- p=0.010: BP 0.02000 · ADMM 0.01950 · ADMM-w 0.01850
+- p=0.020, greedy: BP 0.11700 · ADMM 0.12170 · ADMM-w 0.11000
+- p=0.020, OSD-CS(60): BP 0.11440 · ADMM 0.11040 · ADMM-w 0.10200
+- p=0.010, greedy: BP 0.02230 · ADMM 0.02220 · ADMM-w 0.02110
 
-Tuning the penalty shrinks the plain-ADMM deficit from 0.020 (3.9
-sigma) to 0.0085 (about 1.7 sigma), and the reference OSD-CS(60)
-sweep removes it entirely at 2000 shots: plain ADMM lands at or
-below BP. The weighted variant is nominally below BP throughout.
-None of the gaps is significant at these shot counts; a 10^4-shot
-fan-out (four 2500-shot seeds) is queued to firm the parity
-verdict.
+Tuning the penalty washes out the plain-ADMM deficit: +0.0047
+(1.0 sigma) against BP instead of the 0.020 (3.9 sigma) at rho = 2.
+The reference OSD-CS(60) sweep moves plain ADMM to -0.0040
+(-0.9 sigma), and the LLR-weighted variant reaches -0.0124
+(-2.8 sigma) below BP+OSD at p = 0.020. The p = 0.010 cells are all
+within 0.6 sigma. Zero invalid corrections throughout.
 
 ### 3.3 Preliminary code-size data
 
@@ -160,19 +159,23 @@ convergence profile. The paper does not mention this normalization.
 
 ## 4. Discussion
 
-The measured answer to the open question is negative with a
-qualification: the LP-family code-capacity advantage over BP+OSD
-does not survive phenomenological noise, but the significant
-plain-ADMM degradation (3.9 sigma at rho = 2) is largely
-settings-dependent. With the tuned penalty rho = 4 and the
-reference OSD-CS(lambda = 60) sweep, every LP-family variant
-reaches statistical parity with BP+OSD, and none shows a
-significant advantage. The surviving claim is parity, not
-degradation. Limitations: the tuned and lambda = 60 runs are
-2000 shots per point (a 10^4-shot fan-out is queued), the
-[[144,12,12]] data is preliminary (300 shots, sub-2-sigma), the
-LDR step size and outer iteration count are our choices, and
-circuit-level noise via stim/sinter is the natural next step.
+The measured answer to the open question is mostly negative with
+one exception. The LP-family code-capacity advantage over BP+OSD
+does not survive phenomenological noise in the naive setting, and
+the significant plain-ADMM degradation (3.9 sigma at rho = 2) is
+largely settings-dependent: at the tuned penalty rho = 4 the
+plain-ADMM deficit washes out to 1.0 sigma over 10^4 shots. One
+cell keeps an advantage: the LLR-weighted ADMM with rho = 4 and
+the reference OSD-CS(lambda = 60) sweep sits 0.0124 below BP+OSD
+at p = 0.020 (2.8 sigma, nominal p about 0.005, uncorrected for
+the multiple settings tested), with parity everywhere else. A
+small advantage may survive for the properly configured weighted
+variant; a targeted replication at that cell is the next step.
+Limitations: the [[144,12,12]] data is preliminary (300 shots,
+sub-2-sigma), the LDR step size and outer iteration count are our
+choices, the ADMM is GPU-nondeterministic at the few-failures
+level, and circuit-level noise via stim/sinter is the natural
+next step.
 
 ## References
 
