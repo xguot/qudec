@@ -4,6 +4,7 @@ from copy import deepcopy
 from contextlib import redirect_stderr
 import io
 import unittest
+from unittest.mock import patch
 
 from scripts import analyze_phenom, bench_phenom, bench_tune
 
@@ -46,6 +47,28 @@ class TestPhenomCli(unittest.TestCase):
         self.assertEqual(bench_tune.parse_args(["72", "6", "10", ".02", ".02"]).ps, [.02])
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             bench_tune.parse_args(["72", "6", "--rhos", "1,1", "--alphas", "1"])
+
+    def test_default_tune_grid_is_matched_and_has_no_duplicate_configs(self):
+        args = bench_tune.parse_args(["72", "1", "2"])
+        self.assertEqual(args.rhos, [.5, 1., 2., 4., 8.])
+        with patch.object(bench_tune, "run_variant") as run, \
+                patch.object(bench_tune, "environment_metadata", return_value={}):
+            bench_tune.main(["72", "1", "2"])
+        self.assertEqual(run.call_count, 62)
+        configurations, names = set(), set()
+        for call in run.call_args_list:
+            name, cls, cfg = call.args[4:7]
+            key = (cls.__name__, "weights_x" in cfg, cfg.get("rho"),
+                   cfg["alpha"], cfg.get("osd_lam"))
+            self.assertNotIn(key, configurations)
+            self.assertNotIn(name, names)
+            configurations.add(key)
+            names.add(name)
+        for weighted in (False, True):
+            for rho in args.rhos:
+                for alpha in args.alphas:
+                    for lam in (None, 60):
+                        self.assertIn(("AdmmOsdDecoder", weighted, rho, alpha, lam), configurations)
 
     def test_aggregate_independent_seeds_and_pair_matching_shots(self):
         records = [record("bp", "a", "1110"), record("admm-w", "a", "0010"),

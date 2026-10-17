@@ -1,105 +1,109 @@
-# Pre-submission plan
+# Corrected rerun campaign
 
-Ordered by cost; items 1-3 run on Rivanna (tongx gpu allocation,
-A6000/A40), item 4 is a small-code stretch. Roughly nine weeks to the
-Dec 15 deadline. Jobs sync through hpc/sync.sh push/pull and land in
-hpc/logs; results are recorded in research_summary.md.
+The correctness audit found tied-minimum BP messages, truncated ADMM
+projections, unmatched BP measurement priors, and circuit-pipeline bugs.
+These are repaired, with regression tests. Historical decoder comparisons
+remain available for provenance; their advantage and deficit conclusions
+are withdrawn pending corrected runs.
 
-## 0. Correctness gate before new research runs
+All new phenomenological runs use full parity projection, matched
+per-column BP priors, bounded decoder batches, and a perfect terminal
+syndrome. Per-shot failures support paired inference. The historical
+open-boundary metric is a separate protocol and is excluded from this
+campaign.
 
-The audit found tied-minimum BP messages, capped ADMM projections,
-unmatched BP measurement priors, and circuit-pipeline bugs. The code
-repairs and focused regression checks are implemented. Historical
-comparisons are retained for provenance and require reruns; their old
-advantage/deficit conclusions are withdrawn.
+## One submission
 
-New phenomenological runs use full parity projection, matched per-column
-BP priors, bounded decoder batches, a perfect terminal syndrome by
-default, and saved per-shot failures for paired inference. The explicit
-legacy open boundary is a separate protocol. Run local tests and circuit
-smoke checks before cluster submission, then rerun the baseline and
-retune with the corrected implementation.
+From the local repository, run `bash hpc/sync.sh push`. On Rivanna, enter
+the synced repository and run `bash hpc/setup.sh` once. Submit:
 
-## 1. ADMM tuning sweep (do first)
+    sbatch hpc/rerun_all.slurm
 
-Historical benchmarks used rho = 2.0, no over-relaxation, and a greedy
-OSD sweep. A sweep against the exhaustive reference lambda = 60
-measures finite-iteration sensitivity before settings are fixed for
-independent confirmation.
+This is the only Slurm entry point. It creates an immutable source
+snapshot and a campaign directory under
+`results/reruns/<initial_job_id>/`, with the manifest, frozen settings,
+outputs, provenance, and worker logs. The initial GPU job runs validation
+and a pilot before submitting dependent stages. A failed gate prevents
+the subsequent research stage from running. The workflow has been
+prepared locally; a corrected cluster campaign has not been submitted
+as part of this work.
 
-- Sweep rho (roughly 0.5 to 8) and the over-relaxation alpha (1.0 to
-  1.8) on the [[72,12,6]] phenom points where plain ADMM trails,
-  especially p = 0.020. The old 0.138 versus 0.118 estimates do not
-  support a corrected decoder comparison.
-- Sweep the OSD-CS lambda at the reference value 60 against the
-  current greedy sweep.
-- Re-run the 2000-shot confirmation with the tuned parameters and
-  record the sensitivity table, so the essay reports the sweep rather
-  than a single untuned point.
+## Stages and default scope
 
-## 2. Higher-statistics decoder comparison
+1. **Validation and pilot.** Run the unit suite and circuit smoke checks,
+   verify the GPU environment, and exercise representative bounded
+   benchmark tasks. Historical runtimes predate the fixes and cannot
+   predict the corrected campaign's cost.
+2. **Tuning.** Use two independent tuning seeds on each of [[72,12,6]]
+   and [[144,12,12]]. Sweep plain and weighted ADMM rho/alpha settings
+   under both greedy OSD and OSD-CS(60). Select and freeze the settings
+   before confirmation; tuning samples are excluded from confirmation.
+3. **Confirmation.** For each code at d = 6, run p = 0.005, 0.010,
+   0.020 under both OSD choices. Each of the 12 cells has four
+   independent 2500-shot shards (48 tasks), each comparing BP, plain
+   ADMM, and weighted ADMM on the same samples. This gives 10,000 shots
+   per decoder per cell.
+4. **Held-out replication.** Repeat [[72,12,6]], d = 6, p = 0.020,
+   OSD-CS(60), on four further independent 2500-shot seeds. Report this
+   predeclared replication separately from the primary confirmation.
+5. **Exploration.** Run both codes at d = 6 over p = 0.005, 0.010,
+   0.020, 0.030 with 300 shots, including LDR. These results characterize
+   the corrected settings and remain separate from confirmation.
+   LDR uses fixed rho = 2, alpha = 1 and four outer iterations; it does
+   not inherit a low rho selected for the plain convex relaxation.
+6. **Code capacity.** Run [[144,12,12]] at p = 0.005, 0.010, 0.020,
+   0.030, 0.050, 0.080, 0.100 with 500 shots, comparing BP, exact LP,
+   and ADMM. This is a modest baseline check; low-rate zero-failure
+   cells provide upper bounds rather than evidence of zero error.
+7. **Preliminary circuits.** By default, run [[72,12,6]] at three rounds,
+   in both X and Z memory bases, at p = 0.001 and 0.002 with 300 shots.
+   These exploratory Stim results do not establish high-statistics
+   circuit-level performance. A native Sinter adapter is not provided.
+8. **Final report.** Validate expected task coverage and provenance,
+   then summarize the stages separately. Report counts, uncertainty,
+   and paired decoder comparisons. A nonsignificant difference does
+   not establish equivalence.
 
-The historical verdict is withdrawn after the implementation audit.
-Raise the [[72,12,6]] confirmation to 10^4 and then 10^5
-shots per point at p = 0.005, 0.010, 0.020 for bp, admm, admm-w.
-Report corrected effect sizes, uncertainty, and paired comparisons.
-A nonsignificant result does not establish equivalence. Replicate any
-selected promising setting on independent seeds before asserting an edge.
+The external `ldpc`/`bposd` code-capacity comparison is optional and off
+by default. Enable it when a fresh external-reference column is needed;
+historical reference numbers must remain clearly labeled.
 
-- Measure corrected wall time before sizing larger jobs; extend
-  hpc/run_phenom_confirm.slurm accordingly.
+## Configuration and recovery
 
-## 3. Complete the [[144,12,12]] phenom comparison
+Set environment variables before submitting. The default
+`QUDEC_CONFIRM_SEEDS=4` and `QUDEC_CONFIRM_SHOTS=2500` give 10,000 shots
+per confirmation cell. Set `QUDEC_CONFIRM_SEEDS=40` for 100,000 shots
+per cell. This larger campaign is an explicit escalation in cost.
 
-The code-size comparison needs corrected evidence on both instances.
-The historical larger-code data contains only 300 shots per point, and
-the attempted 2500-shot confirmation exhausted memory.
+`QUDEC_BATCH_SIZE=32` bounds decoder memory. `QUDEC_MAX_PARALLEL=4`
+limits simultaneous benchmark workers. `QUDEC_TASK_TIME=12:00:00`
+sets the benchmark worker time limit, and `QUDEC_PYTHON` overrides the
+Python executable. Set `QUDEC_INCLUDE_CIRCUIT=0` to omit the preliminary
+circuit stage, or `QUDEC_INCLUDE_REFERENCE=1` to include the external
+reference stack installed by setup.
 
-- Run hpc/run_phenom_144.slurm at confirmation shot counts (10^4 to
-  10^5) for bp, admm, admm-w over p = 0.005, 0.010, 0.020.
-- Fold the result into docs/paper_draft.md section 3.3 and the
-  discussion.
+Inspect the manifest plan without submitting:
 
-## 4. Stretch: preliminary circuit-level noise via Stim
+    .venv/bin/python scripts/rerun_all.py plan
 
-The essay's actual question is what survives under circuit-level
-noise. Preliminary numbers on a small code upgrade the opening hook
-from question to question-plus-evidence.
+Resume a campaign from its original snapshot and settings:
 
-- Build a stim circuit for a small code with few syndrome-extraction
-  rounds, sample directly through Stim, and decode with the unpacked
-  decode_batch array interface. A native Sinter adapter is not implemented.
-- Keep it to one or two codes, one or two error rates, and report it
-  explicitly as preliminary.
+    sbatch hpc/rerun_all.slurm resume /absolute/path/to/results/reruns/<initial_job_id>
 
-## Timeline
+Resume after the earlier jobs have stopped. Valid completed cells are
+skipped and partial cells are replaced. Scheduling time and concurrency
+may be overridden on retry; statistical inputs and decoder settings are
+unchanged.
 
-Roughly nine weeks, Oct 10 to Dec 15.
+Pull the results with `bash hpc/sync.sh pull`. Sync push retires the
+eight replaced Slurm files by exact filename on the remote checkout and
+preserves historical logs and campaign results. Its `--dry-run` option
+does not create or remove remote files.
 
-- Weeks 1-2: item 1 and the first 10^4-shot confirmation.
-- Weeks 3-6: 10^5-shot confirmation and the [[144,12,12]] runs.
-- Weeks 7-9: item 4 and essay integration, with a re-run buffer.
+## After the campaign
 
-Item 4 is deliberately deferred; if weeks 1-6 slip, item 4 is the
-cut.
-
-## Implementation status
-
-- Shared tie-safe BP and scalar/per-column priors are implemented.
-- Full forbidden-set parity projection replaces capped slice search;
-  tests compare both parities and higher-degree checks to an independent QP.
-- OSD-CS(lambda), ADMM rho/alpha, and the BP reference scaling schedule
-  are configurable. Corrected settings need a fresh tuning sweep.
-- Phenom benchmarks expose terminal boundary and bounded batch size,
-  reuse samples across variants, and save failure records/metadata for
-  reproducible paired analysis. Confirmation jobs expose these options.
-- The circuit builder tracks separate logical observables in both bases,
-  applies measurement flip noise, and extracts per-mechanism DEM priors.
-  Local Stim tests and smoke checks validate the corrected pipeline;
-  cluster-scale circuit results remain outstanding.
-- Existing 10000-shot historical cells cover greedy p = 0.010/0.020
-  and OSD-CS(60) p = 0.020 on [[72,12,6]]. They require reruns after the
-  repairs. No corrected high-statistics research results are claimed.
-- Higher-statistics [[144,12,12]] results, independent promising-cell
-  replication, corrected manuscript tables, and a verified bibliography
-  remain outstanding.
+Check the final report and any failed or missing tasks before updating
+research claims. Integrate corrected tables and their uncertainty into
+the manuscript, retain the replication distinction, and finish the
+bibliography. Historical tables are not corrected evidence merely
+because the implementation now passes its tests.

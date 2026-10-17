@@ -1,9 +1,11 @@
 """Paired ADMM rho/alpha and OSD-CS tuning under closed memory noise.
 
-  python scripts/bench_tune.py 72 6 300 .02 --rhos 1,2,4 --alphas 1,1.5,1.8
+  python scripts/bench_tune.py 72 6 300 .02 --rhos .5,1,2,4,8 --alphas 1,1.5,1.8
 
 Uses the same bounded benchmark and JSONL outcome format as bench_phenom.
-The weighted ADMM anchor is included with both greedy and lambda OSD.
+Plain and weighted ADMM receive the same grid under greedy and lambda
+OSD. Every effective configuration appears exactly once. BP supplies
+the matching baseline for each OSD setting.
 """
 
 import argparse
@@ -35,7 +37,7 @@ def positive_list(value):
 
 def parse_args(argv=None):
     parser = common_parser(__doc__)
-    parser.add_argument("--rhos", type=positive_list, default=[1.0, 2.0, 4.0])
+    parser.add_argument("--rhos", type=positive_list, default=[0.5, 1.0, 2.0, 4.0, 8.0])
     parser.add_argument("--alphas", type=positive_list, default=[1.0, 1.5, 1.8])
     parser.add_argument("--lam", type=positive_int, default=60)
     args = parser.parse_intermixed_args(argv)
@@ -57,18 +59,20 @@ def main(argv=None):
                                 terminal_perfect=not args.legacy_open_boundary)
         p_x, p_z = phenom_priors(h_x, h_z, args.rounds, p, args.p_meas)
         bp = {"max_iter": 30, "alpha": 0.9, "osd_order": 1}
-        admm = {"max_iter": 150, "rho": 2.0, "alpha": 1.0, "osd_order": 1}
-        weighted = dict(admm, weights_x=np.log((1-p_x)/p_x), weights_z=np.log((1-p_z)/p_z))
         variants = [("bp", BpOsdDecoder, bp),
-                    ("bp-lam", BpOsdDecoder, dict(bp, osd_lam=args.lam)),
-                    ("admm", AdmmOsdDecoder, admm),
-                    ("admm-lam", AdmmOsdDecoder, dict(admm, osd_lam=args.lam)),
-                    ("admm-w", AdmmOsdDecoder, weighted),
-                    ("admm-w-lam", AdmmOsdDecoder, dict(weighted, osd_lam=args.lam))]
-        for rho in args.rhos:
-            for alpha in args.alphas:
-                variants.append((f"admm-r{rho:g}-a{alpha:g}", AdmmOsdDecoder,
-                                 dict(admm, rho=rho, alpha=alpha)))
+                    ("bp-lam", BpOsdDecoder, dict(bp, osd_lam=args.lam))]
+        for name, weights in (("admm", {}), ("admm-w", {
+                "weights_x": np.log((1-p_x)/p_x),
+                "weights_z": np.log((1-p_z)/p_z)})):
+            for rho in args.rhos:
+                for alpha in args.alphas:
+                    for osd_lam in (None, args.lam):
+                        label = f"{name}-r{rho:g}-a{alpha:g}"
+                        if osd_lam is not None:
+                            label += f"-lam{osd_lam}"
+                        kw = dict(max_iter=150, osd_order=1, osd_lam=osd_lam,
+                                  rho=rho, alpha=alpha, **weights)
+                        variants.append((label, AdmmOsdDecoder, kw))
         for name, cls, kw in variants:
             run_variant(args, matrices, p, samples, name, cls, kw, output, environment)
 

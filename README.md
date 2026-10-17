@@ -40,10 +40,59 @@ Reference sweep for paper parity (adds `ldpc` + `bposd`):
 
 ## HPC (Rivanna)
 
-Sync code with `bash hpc/sync.sh push`, set up the environment once with
-`bash hpc/setup.sh`, then submit `hpc/run_test_bench.slurm` (tests plus
-code-capacity sweeps) or `hpc/run_phenom.slurm` (phenomenological noise).
-Pull results back with `bash hpc/sync.sh pull`.
+Sync from your local checkout:
+
+    bash hpc/sync.sh push
+
+On Rivanna, enter the synced repository, run `bash hpc/setup.sh` once,
+then submit the complete corrected campaign with one command:
+
+    sbatch hpc/rerun_all.slurm
+
+The initial job freezes a source snapshot, runs the tests and pilot,
+and submits dependent tuning, setting selection, benchmark workers,
+and a final report. Confirmation waits for successful tuning and uses
+independent seeds. Results, frozen settings, source provenance, and worker
+logs live under `results/reruns/<initial_job_id>/`. The default worker
+limit is four simultaneous jobs. Pull the campaign back with
+`bash hpc/sync.sh pull`. No corrected Slurm campaign has been submitted
+as part of preparing this workflow.
+
+The default campaign includes both codes at six phenomenological rounds,
+three error rates (0.005, 0.010, 0.020), and both greedy OSD and OSD-CS(60).
+Each confirmation cell contains four independent 2500-shot shards,
+for 10,000 shots per decoder, with paired BP, plain ADMM, and weighted
+ADMM outcomes. Separate tasks cover a held-out replication, exploratory
+LDR comparisons, code-capacity checks, and a preliminary circuit sweep.
+See [the campaign plan](docs/plan.md) for the full scope.
+
+Common overrides, set before `sbatch`:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `QUDEC_CONFIRM_SEEDS` | `4` | Set to `40` for 100,000 shots per confirmation cell. |
+| `QUDEC_CONFIRM_SHOTS` | `2500` | Shots in each confirmation shard. |
+| `QUDEC_BATCH_SIZE` | `32` | Bound decoder memory independently of total shots. |
+| `QUDEC_MAX_PARALLEL` | `4` | Maximum simultaneous benchmark workers. |
+| `QUDEC_INCLUDE_CIRCUIT` | `1` | Set to `0` to omit the preliminary circuit sweep. |
+| `QUDEC_INCLUDE_REFERENCE` | `0` | Set to `1` to include the external `ldpc`/`bposd` comparison. |
+| `QUDEC_TASK_TIME` | `12:00:00` | Time limit requested for benchmark worker jobs. |
+| `QUDEC_PYTHON` | auto-detected | Python executable for the campaign. |
+
+Inspect the plan locally, or resume an existing campaign on Rivanna:
+
+    .venv/bin/python scripts/rerun_all.py plan
+    sbatch hpc/rerun_all.slurm resume /absolute/path/to/results/reruns/<initial_job_id>
+
+Resume after the previous jobs have stopped. Completed cells are checked
+and skipped; partial cells are replaced. `QUDEC_TASK_TIME` and
+`QUDEC_MAX_PARALLEL` may change for a retry, while samples, batch size,
+source, and decoder settings remain frozen.
+
+Sync push retires the eight replaced Slurm entry points by exact filename
+on the remote checkout and preserves results and logs. Use
+`bash hpc/sync.sh push --dry-run` to inspect the transfer and retirement
+plan without changing remote files.
 
 ## Quickstart
 
