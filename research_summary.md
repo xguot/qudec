@@ -1,5 +1,30 @@
 # Research Summary: LP and ADMM Decoding of Quantum LDPC Codes
 
+## Correctness audit and result status
+
+The implementation audit invalidates conclusions drawn from the historical
+in-tree comparisons below. BP removed every tied minimum when computing
+extrinsic check messages; ADMM benchmark settings capped parity slices
+and could fall back outside the parity polytope. BP also used a data-error
+prior for measurement columns. Zero invalid OSD corrections do not test
+these message or relaxation errors.
+
+The corrected code shares a tie-safe BP implementation, uses full
+forbidden-set parity projection, and matches per-column BP channel priors.
+New runs close the noisy history with a perfect terminal syndrome by
+default, decode in bounded batches, and retain per-shot failure outcomes
+for paired comparisons. The explicit legacy open boundary remains
+available for protocol sensitivity checks. These protocol versions must
+not be pooled. Corrected high-statistics runs have not been completed.
+
+The old 0.118 versus 0.138 result at 2000 shots per decoder is approximately
+1.89 sigma under a pooled independent two-proportion calculation, not the
+previously reported 3.9 sigma. Variants actually share sampled errors, so
+paired inference requires discordant per-shot outcomes; those were not
+saved by the old runs. The historical 2.8-sigma independent calculation
+also cannot establish an advantage, given the implementation defects,
+shared samples, and selection across multiple settings.
+
 ## What this project does
 
 This project builds GPU-accelerated decoders for quantum low-density
@@ -26,9 +51,8 @@ setting of circuit-level depolarizing noise," and their Appendix C
 sketches the extension without running it. Their companion ISIT 2026
 paper introduces the ADMM variant, likewise at code capacity.
 
-No published work reports LP-family decoding results under
-phenomenological or circuit-level noise for bivariate bicycle codes.
-This project runs that experiment.
+The project investigates that extension. A current literature review is
+still required before making an exhaustive novelty claim.
 
 ## Pipeline
 
@@ -42,9 +66,8 @@ This project runs that experiment.
     Tanner-graph-distance tie breaking (their Sec. V).
   - `src/qudec/admm.py` — plain ADMM on the parity-polytope relaxation
     (their QP (8) with g = 0, c = 1), batched in PyTorch. The
-    z-projection onto the parity polytope is exact, via the two-slice
-    representation of Barman et al. and a segment walk that resolves
-    roots at clip and sort-switch breakpoints.
+    z-projection uses forbidden-set cut search followed by a bounded
+    scalar root solve, without a parity-slice cap.
 - **Noise models**: i.i.d. code capacity, and phenomenological noise
   (`src/qudec/phenom.py`) with per-round data and measurement errors on
   the time-expanded detector system
@@ -53,7 +76,7 @@ This project runs that experiment.
   codes, the repetition-code MLD rate, and the ADMM-vs-exact-LP
   objective gate across all Steane syndromes.
 
-## Results so far
+## Historical results (require corrected reruns)
 
 Code capacity, [[144,12,12]] gross code (Rivanna, 500 shots for the
 in-tree decoders, 20000 for the bposd reference):
@@ -63,9 +86,9 @@ in-tree decoders, 20000 for the bposd reference):
 - p=0.08: LP 0.096 · BP 0.088 · bposd 0.08475
 - p=0.10: LP 0.294 · BP 0.302 · bposd 0.23210
 
-LP+OSD sits at or below BP+OSD at three of four points and below the
-20000-shot reference at low p, reproducing the paper's qualitative claim.
-Zero invalid corrections throughout.
+These are historical point estimates, with zero invalid corrections
+reported. The in-tree BP baseline needs rerunning before a comparison
+with LP or the independent reference can be interpreted.
 
 Phenomenological noise, [[72,12,6]], d = 6 rounds, 300 shots
 (Rivanna, A6000/A40). Logical error rates for BP+OSD, plain ADMM+OSD,
@@ -77,17 +100,11 @@ LDR-ADMM+OSD with four outer iterations:
 - p=0.020: BP 0.10000 · ADMM 0.14667 · ADMM-w 0.10000 · LDR 0.13000
 - p=0.030: BP 0.26333 · ADMM 0.30333 · ADMM-w 0.28333 · LDR 0.32667
 
-Zero invalid corrections throughout; per-point gaps are sub-2-sigma at
-300 shots. Plain ADMM loses the code-capacity edge and trails BP at
-three of four rates. The LLR-weighted variant recovers parity, edging
-BP at the two lowest rates and trailing marginally at p = 0.030. The
-LDR variant shows no consistent gain at four outer iterations.
-
-Implementation finding: applying the Appendix C weights naively
-collapses the ADMM to the trivial all-zero fixed point on the first
-update; normalizing the weights by their maximum (which leaves the LP
-optimum invariant) restores proper convergence. The paper does not
-mention this normalization.
+These exploratory estimates came from the pre-audit implementation.
+The earlier weighting-normalization observation is also implementation-
+dependent: objective scaling preserves the LP optimum, but its effect on
+finite-iteration ADMM convergence must be reassessed after the projection
+repair. A large LLR is not evidence of an inevitable all-zero fixed point.
 
 2000-shot confirmation, [[72,12,6]], d = 6:
 
@@ -100,15 +117,8 @@ Preliminary [[144,12,12]], d = 6, 300 shots:
 - p=0.005: BP 0.00667 · ADMM 0.01000 · ADMM-w 0.00333
 - p=0.010: BP 0.03333 · ADMM 0.05667 · ADMM-w 0.04333
 
-Measured answer at the paper's default settings: the LP-family
-code-capacity advantage over BP+OSD does not survive
-phenomenological noise. Plain ADMM degrades significantly at
-p = 0.020 (0.138 versus 0.118, 3.9 sigma at 2000 shots); the
-properly weighted variant repairs this to statistical parity
-everywhere, with no significant advantage. The 300-shot hints of
-a low-rate edge wash out at 2000 shots. The tuned confirmation
-below revises this verdict: most of the plain-ADMM deficit is
-settings-dependent.
+No corrected comparison is available yet. The earlier negative verdict
+and its statistical significance are withdrawn pending reruns.
 
 ### Tuning sweep ([[72,12,6]], d = 6, p = 0.020, 300 shots)
 
@@ -121,11 +131,9 @@ on both BP and ADMM (raw table in results/tune_72.csv):
 - rho = 1 0.16333; rho = 2 0.14667; rho = 4 0.11667
 - alpha at rho = 4: 1.0 0.11667, 1.5 0.11667, 1.8 0.12000 (weak effect)
 
-Rho = 4 removes most of the plain-ADMM deficit seen at the paper's
-default rho = 2: the gap to BP+OSD shrinks from 0.047 to 0.017. The
-negative result survives but narrows: tuned plain ADMM still trails
-BP+OSD at p = 0.020. These are 300-shot numbers; the 2000-shot tuned confirmation
-follows.
+The historical sweep motivated rho = 4 for subsequent exploratory runs.
+The corrected solver and baseline require a fresh tuning sweep before
+choosing settings for independent confirmation.
 
 ### Complete fan-out ([[72,12,6]], d = 6, rho = 4, 10^4 shots per cell)
 
@@ -147,39 +155,29 @@ Deltas against BP at the same OSD setting (two-sample, pooled):
   (-2.8 sigma)
 - greedy p=0.010: ADMM -0.00010, ADMM-w -0.00120 (-0.6 sigma)
 
-Final verdict: the significant plain-ADMM degradation at the default
-rho = 2 was settings-dependent and washes out at 10^4 shots once
-tuned (1.0 sigma). Everything reaches parity except one cell: the
-LLR-weighted ADMM with rho = 4 and OSD-CS(60) sits 0.0124 below
-BP+OSD at p = 0.020 (2.8 sigma, nominal p about 0.005, uncorrected
-for the multiple settings tested). A small advantage may survive
-phenomenological noise for the properly configured weighted variant.
-Run a targeted replication at that cell (seeds 4-7) before asserting
-it, and note the GPU run-to-run nondeterminism of the ADMM in the
-methods.
+The historical weighted rho = 4, OSD-CS(60), p = 0.020 cell is a
+candidate for a corrected rerun and independent replication (seeds 4-7).
+It does not establish an advantage. GPU run-to-run variation and multiple
+settings must be reflected in the final analysis.
 
-## Known limitations
+## Known limitations and remaining work
 
-- The LDR variant uses a diminishing beta/sqrt(k+1) step and four outer
-  iterations; the paper does not pin beta_k, so this variant is our
-  choice rather than their verbatim algorithm.
-- Untuned ADMM parameters (rho = 2.0, no over-relaxation).
-- OSD post-processing uses the lambda = 1 combination sweep rather than
-  the lambda = 60 of the reference implementation.
-- The LP solver (HiGHS) scales to code-capacity degrees only; the ADMM
-  covers the time-expanded detector systems.
-- 300 shots leave the phenom gaps sub-significant; a 2000-shot run
-  would firm the low-rate weighted advantage.
+- All historical in-tree decoder comparisons need corrected reruns.
+- The LDR diminishing step and outer iteration budget are implementation
+  choices; finite-iteration sensitivity must be measured.
+- HiGHS is restricted to small/code-capacity systems; ADMM covers larger
+  detector systems. Its finite iteration budget is not a convergence proof.
+- BP/OSD run on CPU and ADMM may run on CUDA; timing results need hardware
+  disclosure and do not yet establish GPU speedups against a matched baseline.
+- The old runs did not retain paired failure outcomes. New runs do; use the
+  paired analysis instead of treating identical sampled shots as independent.
+- Complete the corrected [[72,12,6]] grid (including p = 0.005), then
+  10^4-10^5-shot confirmations and [[144,12,12]] comparisons. The previous
+  2500-shot larger-code attempt exhausted memory; bounded decoding batches
+  replace allocating the full decoder workspace for every shot at once.
+- Validate preliminary circuit data in both bases, then decide whether the
+  optional circuit experiment belongs in the submission.
+- Update the manuscript with corrected results, intervals, paired statistics,
+  setting-selection disclosure, and a verified bibliography.
 
-## Roadmap
-
-- Tune ADMM (rho, over-relaxation, OSD lambda) - swept at 300
-  shots; rho = 4 removes most of the plain-ADMM deficit at
-  rho = 2. Confirm rho = 4 at 2000 shots.
-- Raise the [[72,12,6]] confirmation to 10^4-10^5 shots per point.
-- Complete the [[144,12,12]] phenom comparison at confirmation shot
-  counts.
-- Preliminary circuit-level noise via stim/sinter on a small code.
-
-See docs/plan.md for the ordered plan, per-item rationale, and the
-Dec 15 timeline.
+See docs/plan.md for the ordered plan and Dec 15 timeline.

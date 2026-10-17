@@ -1,8 +1,8 @@
 """Belief propagation with ordered statistics decoding for CSS codes."""
 
 import numpy as np
-import torch
 
+from qudec.bp import channel_llrs, min_sum_bp, probability_vector
 from qudec.osd import osd_decode
 
 
@@ -12,7 +12,7 @@ class BpOsdDecoder:
     h_x: X-stabilizer matrix, detects Z errors
     h_z: Z-stabilizer matrix, detects X errors
     l_x, l_z: logical operator matrices, each k x n
-    p_x, p_z: marginal per-qubit error probabilities for the channel LLR
+    p_x, p_z: scalar or per-column marginal error probabilities in (0, 1)
     osd_order: 0 for OSD-0, 1 for OSD-0 plus the combination sweep (OSD-CS)
     osd_lam: set to run the reference exhaustive OSD-CS(lambda) sweep
     alpha: min-sum scaling; None selects the reference schedule 1 - 2**(-t)
@@ -24,8 +24,10 @@ class BpOsdDecoder:
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
         self.l_z = l_z.astype(np.int8)
-        self.p_x = float(p_x)
-        self.p_z = float(p_z)
+        self._probabilities_x = probability_vector(p_x, self.h_z.shape[1], "p_x")
+        self._probabilities_z = probability_vector(p_z, self.h_x.shape[1], "p_z")
+        self.p_x = float(p_x) if np.ndim(p_x) == 0 else self._probabilities_x.copy()
+        self.p_z = float(p_z) if np.ndim(p_z) == 0 else self._probabilities_z.copy()
         self.max_iter = max_iter
         self.alpha = alpha
         self.osd_order = osd_order
@@ -37,30 +39,7 @@ class BpOsdDecoder:
         h: (m, n) binary, s: (batch, m) syndromes, llr: (n,) channel LLR.
         Return final per-variable LLRs, shape (batch, n).
         """
-        a = torch.as_tensor(h, dtype=torch.float32)
-        s = torch.as_tensor(s, dtype=torch.float32)
-        l_ch = torch.as_tensor(llr, dtype=torch.float32)
-        batch, n = s.shape[0], a.shape[1]
-        big = 1e4
-        l_vc = a.unsqueeze(0) * l_ch.view(1, 1, n)
-        for t in range(self.max_iter):
-            a_t = self.alpha if self.alpha is not None else 1.0 - 2.0 ** (-(t + 1))
-            abs_l = torch.where(a > 0, l_vc.abs(), big)
-            amin, _ = abs_l.min(dim=2)
-            asecond = torch.where(
-                abs_l == amin.unsqueeze(2), big, abs_l).min(dim=2).values
-            mag = torch.where(
-                abs_l == amin.unsqueeze(2), asecond.unsqueeze(2),
-                amin.unsqueeze(2)) * a.unsqueeze(0)
-            neg = (l_vc < 0) & (a > 0)
-            parity = (neg.sum(dim=2) + s) % 2
-            sign = (1 - 2 * parity).unsqueeze(2) * (
-                1 - 2 * (l_vc < 0).float())
-            m_cv = sign * mag * a_t
-            sum_in = m_cv.sum(dim=1)
-            l_vc = a.unsqueeze(0) * (
-                l_ch.view(1, 1, n) + sum_in.unsqueeze(1) - m_cv)
-        return l_ch.view(1, n) + m_cv.sum(dim=1)
+        return min_sum_bp(h, s, llr, self.max_iter, self.alpha)
 
     def _osd(self, h, s, order):
         """Run OSD post-processing on h with syndrome s.
@@ -75,10 +54,12 @@ class BpOsdDecoder:
 
         Return (corr_x, corr_z), each (batch, n) int8 per-qubit corrections.
         """
-        n = self.h_z.shape[1]
-        llr_x = np.full(n, np.log((1 - self.p_x) / self.p_x))
+        if sx.shape[0] == 0 and sz.shape[0] == 0:
+            return (np.zeros((0, self.h_z.shape[1]), dtype=np.int8),
+                    np.zeros((0, self.h_x.shape[1]), dtype=np.int8))
+        llr_x = channel_llrs(self._probabilities_x, self.h_z.shape[1], "p_x")
         l_x = self._bp(self.h_z, sx, llr_x).numpy()
-        llr_z = np.full(n, np.log((1 - self.p_z) / self.p_z))
+        llr_z = channel_llrs(self._probabilities_z, self.h_x.shape[1], "p_z")
         l_z = self._bp(self.h_x, sz, llr_z).numpy()
         c_x = np.stack([
             self._osd(self.h_z, sx[i], np.argsort(l_x[i], kind="stable"))
@@ -96,7 +77,7 @@ class BpOsdDecoder:
         return c_x[0], c_z[0]
 
     def decode_batch(self, shots):
-        """Decode in the sinter protocol.
+        """Predict observable flips from unpacked detector arrays.
 
         shots: (batch, m_z + m_x) syndromes, concatenated [sigma_x | sigma_z].
         Return (batch, 2k) predicted observable flips

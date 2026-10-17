@@ -6,7 +6,8 @@ parity polytope of the syndrome bit, and the qubit indicators minimize a
 separable quadratic. The relaxation equals the exact LP (2) of the TIT
 paper, so this solver replaces HiGHS where the subset formulation is too
 large, such as detector error models. OSD post-processing reuses the LP
-decoder's ordering, with integrality |x_i - 1/2| as reliability.
+decoder's ordering, with decreasing error indicators and Tanner-distance
+tie breaking.
 """
 
 import numpy as np
@@ -33,164 +34,62 @@ def build_tanner(h):
     return idx, mask
 
 
-def parity_polytope_projection(z, parity, mask, grid=9, bisect_iters=24,
+def parity_polytope_projection(z, parity, mask, grid=9, bisect_iters=32,
                              max_r=None):
-    """Project z (batch, m, d) onto per-check parity polytopes.
+    """Euclidean projection onto masked even/odd parity polytopes.
 
-    Uses the two-slice representation of the parity polytope (Barman et
-    al. 2013): in sorted space, membership for constituent parity r is
-    the single constraint 2 sum_{k<=r+1} x - sum x <= r. The KKT
-    correction for a candidate r is x = clip(v - mu n_slice - delta
-    n_balance) with n_slice = +1 on the first r+1 coordinates and
-    n_balance = +1 on the first coordinate only. Solve by nested search:
-    inner bisection in mu (monotone), outer grid scan for the smallest
-    delta root. Enumerate candidate parities and keep the nearest
-    feasible point.
+    Cut search finds the unique forbidden-set inequality violated by
+    the box projection, if any. The desired projection lies on that
+    face; solve ``theta @ clip(z - mu * theta) = |V| - 1`` for mu >= 0.
+    This is the cut-search projection of Zhang and Siegel, extended to
+    odd parity (Gensheimer et al., arXiv:1901.03240, Section IV).
+    Bisection resolves the scalar root to floating-point precision.
 
-    parity (batch, m): required parity b of each check.
-    mask (m, d): valid slots per check.
+    ``z`` has shape (batch, checks, slots), ``parity`` (batch, checks),
+    and ``mask`` (checks, slots). Padded slots do not enter the cut.
+    Legacy ``grid`` and ``max_r`` arguments are accepted but no longer
+    restrict the projection: truncating parity slices is not valid.
     """
-    batch, m, d = z.shape
-    big = 1e6
-    vals = torch.where(mask.unsqueeze(0), z, torch.full_like(z, -big))
-    deg = mask.sum(dim=1).long()
-    kk = torch.arange(1, d + 1, dtype=torch.float32,
-                      device=vals.device).view(1, 1, d)
-    vals, sort_idx = vals.sort(dim=2, descending=True)
-
-    def g_of(v, r):
-        """Constraint value 2 sum_{k<=r+1} v - sum v - r in sorted space."""
-        v = v.sort(dim=2, descending=True).values.clamp(0.0, 1.0)
-        pre = (v * (kk <= r + 1)).sum(dim=2)
-        return 2.0 * pre - v.sum(dim=2) - r
-
-    def d2_of(x):
-        return ((x - vals) ** 2).sum(dim=2)
-
-    best_x = None
-    best_d2 = None
-    best_ok = None
-
-    n_outer = torch.where(kk <= parity.unsqueeze(2) + 1, 1.0, -1.0)
-    lam_hi = 8.0
-    dgrid = torch.linspace(0.0, lam_hi, grid, dtype=torch.float32,
-                           device=vals.device)
-    r_cap = min(d - 1, int(deg.max().item()) - 1)
-    if max_r is not None:
-        r_cap = min(r_cap, max_r)
-
-    def g_outer(x):
-        pre = (x * (kk <= parity.unsqueeze(2) + 1)).sum(dim=2)
-        return 2.0 * pre - x.sum(dim=2) - parity
-
-    for r in range(r_cap + 1):
-        n_slice = torch.where(kk <= r + 1, 1.0, -1.0)
-
-        def x_of(mu, delta):
-            if mu.ndim == 2:
-                mu = mu.unsqueeze(2)
-            if delta.ndim == 2:
-                delta = delta.unsqueeze(2)
-            return (vals - mu * n_slice - delta * n_outer).clamp(0.0, 1.0)
-
-        # inner: smallest mu >= 0 with g_slice <= 0, by exact segment
-        # walk over the piecewise-linear g. Breakpoints are the clip
-        # events of the prefix and tail coordinates and the sort switches
-        # between them; roots can lie at breakpoints, so grids miss them.
-        def mu_star(delta):
-            if delta.ndim == 2:
-                delta = delta.unsqueeze(2)
-            base = vals - delta * n_outer
-            pre = base[:, :, :r + 1]
-            tail = base[:, :, r + 1:]
-            bps = torch.cat([pre, pre - 1.0, 1.0 - tail, -tail], dim=2)
-            sw = (pre.unsqueeze(3) - tail.unsqueeze(2)) / 2.0
-            bps = torch.cat([bps, sw.reshape(batch, m, -1)], dim=2)
-            bps = bps.clamp(min=0.0)
-            bps, _ = bps.sort(dim=2)
-            n_pts = bps.shape[2]
-            g0 = g_of(x_of(vals.new_zeros(batch, m), delta), r)
-            best = vals.new_full((batch, m), float("inf"))
-            found = g0 <= 1e-6
-            best = torch.where(found, torch.zeros_like(best), best)
-            prev_mu = vals.new_zeros(batch, m)
-            prev_g = g0
-            for t in range(n_pts):
-                mu_t = bps[:, :, t]
-                g_t = g_of(x_of(mu_t, delta), r)
-                cand_t = torch.where((g_t <= 1e-6) & (prev_g > 1e-6), mu_t,
-                                     torch.full_like(mu_t, float("inf")))
-                denom = (prev_g - g_t).clamp(min=1e-12)
-                interior = prev_mu + prev_g * (mu_t - prev_mu) / denom
-                cand_i = torch.where(
-                    (prev_g > 1e-6) & (g_t < -1e-6) & (prev_g > g_t),
-                    interior, torch.full_like(mu_t, float("inf")))
-                cand = torch.minimum(cand_t, cand_i)
-                take = (~found) & (cand < best)
-                best = torch.where(take, cand, best)
-                found = found | (cand < float("inf"))
-                keep = g_t > 1e-6
-                prev_mu = torch.where(keep, mu_t, prev_mu)
-                prev_g = torch.where(keep, g_t, prev_g)
-            return torch.where(best.isinf(), vals.new_zeros(batch, m), best)
-
-        # outer: smallest delta >= 0 with g_outer(mu*(delta), delta) <= 0
-        h = torch.stack(
-            [g_outer(x_of(mu_star(d.view(1, 1, 1)), d.view(1, 1, 1)))
-             for d in dgrid], dim=0)
-        feas = h <= 1e-6
-        n_lead = (feas.cumsum(dim=0) == 0).sum(dim=0)
-        lo_d = dgrid[(n_lead - 1).clamp(min=0)]
-        hi_d = dgrid[n_lead.clamp(max=grid - 1)]
-        for _ in range(bisect_iters):
-            mid = (lo_d + hi_d) / 2
-            hm = g_outer(x_of(mu_star(mid), mid))
-            reached = hm <= 1e-6
-            lo_d = torch.where(reached, lo_d, mid)
-            hi_d = torch.where(reached, mid, hi_d)
-        mu = mu_star(hi_d)
-        x_r = x_of(mu, hi_d)
-        x_r, _ = x_r.sort(dim=2, descending=True)
-        total = x_r.sum(dim=2)
-        fl = (total + 1e-4).floor().long()
-        r_star = torch.where(fl % 2 == parity, fl, fl - 1)
-        ok = (r_star == r) & (g_of(x_r, r) <= 1e-4)
-        d2 = d2_of(x_r)
-        if best_x is None:
-            best_x, best_d2, best_ok = x_r, d2, ok
-        else:
-            take = ok & (~best_ok | (d2 < best_d2))
-            best_x = torch.where(take.unsqueeze(2), x_r, best_x)
-            best_d2 = torch.where(take, d2, best_d2)
-            best_ok = ok | best_ok
-
-    # lower-bound candidate for odd parity: x = clip(vals + mu), sum = 1
-    lo = vals.new_zeros(batch, m)
-    hi = vals.new_full((batch, m), 1.0)
+    if bisect_iters < 1:
+        raise ValueError("bisect_iters must be positive")
+    mask = torch.as_tensor(mask, dtype=torch.bool, device=z.device)
+    parity = torch.as_tensor(parity, device=z.device)
+    if z.ndim != 3 or mask.shape != z.shape[1:] or parity.shape != z.shape[:2]:
+        raise ValueError("incompatible projection tensor shapes")
+    if not torch.isfinite(z).all() or torch.any((parity != 0) & (parity != 1)):
+        raise ValueError("projection needs finite values and binary parities")
+    parity = parity.long()
+    degrees = mask.sum(dim=-1)
+    if torch.any((degrees == 0).unsqueeze(0) & (parity == 1)):
+        raise ValueError("an empty check cannot have odd parity")
+    if z.shape[-1] == 0:
+        return torch.zeros_like(z)
+    active = mask.unsqueeze(0)
+    box = torch.where(active, z.clamp(0.0, 1.0), 0.0)
+    plus = (z > 0.5) & active
+    # Forbidden sets have parity opposite to the requested syndrome.
+    flip = (plus.sum(dim=-1) % 2 == parity) & (degrees > 0).unsqueeze(0)
+    distance = torch.where(active, (z - 0.5).abs(), float("inf"))
+    nearest = distance.argmin(dim=-1, keepdim=True)
+    toggle = torch.zeros_like(plus).scatter_(-1, nearest, flip.unsqueeze(-1))
+    plus = plus ^ toggle
+    theta = torch.where(active, torch.where(plus, 1.0, -1.0), 0.0)
+    bound = plus.sum(dim=-1) - 1
+    violated = (theta * box).sum(dim=-1) > bound
+    violated &= (degrees > 0).unsqueeze(0)
+    # At this upper bound all positive cut coordinates are 0 and all
+    # negative cut coordinates are 1, so the halfspace is satisfied.
+    lo = torch.zeros_like(bound, dtype=z.dtype)
+    hi = torch.where(active, z.abs(), 0.0).amax(dim=-1) + 1.0
     for _ in range(bisect_iters):
         mid = (lo + hi) / 2
-        sm = (vals + mid.unsqueeze(2)).clamp(0.0, 1.0).sum(dim=2)
-        below = sm < 1.0
-        lo = torch.where(below, mid, lo)
-        hi = torch.where(below, hi, mid)
-    x_low = (vals + hi.unsqueeze(2)).clamp(0.0, 1.0)
-    x_low, _ = x_low.sort(dim=2, descending=True)
-    ok_low = (parity == 1) & (x_low.sum(dim=2) >= 1.0 - 1e-4) \
-        & (g_of(x_low, 1) <= 1e-4)
-    d2 = d2_of(x_low)
-    take = ok_low & (~best_ok | (d2 < best_d2))
-    best_x = torch.where(take.unsqueeze(2), x_low, best_x)
-    best_ok = ok_low | best_ok
-    best_d2 = torch.where(take, d2, best_d2)
-
-    # box-only fallback for entries with no valid candidate
-    x0 = vals.clamp(0.0, 1.0)
-    take = ~best_ok
-    best_x = torch.where(take.unsqueeze(2), x0, best_x)
-
-    out = torch.empty_like(best_x)
-    out.scatter_(2, sort_idx, best_x)
-    return torch.where(mask.unsqueeze(0), out, torch.zeros_like(out))
+        candidate = (z - mid.unsqueeze(-1) * theta).clamp(0.0, 1.0)
+        gap = (theta * candidate).sum(dim=-1) - bound
+        lo = torch.where(gap > 0, mid, lo)
+        hi = torch.where(gap > 0, hi, mid)
+    projected = (z - hi.unsqueeze(-1) * theta).clamp(0.0, 1.0)
+    out = torch.where(violated.unsqueeze(-1), projected, box)
+    return torch.where(active, out, 0.0)
 
 
 def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
@@ -202,67 +101,96 @@ def admm_solve_batch(h, s, rho=2.0, alpha=1.0, max_iter=500,
     Return qubit error indicators x (batch, n) in [0, 1]. c_vec are the
     per-column objective coefficients (log-likelihood weights per the
     paper's Appendix C; uniform by default), normalized by their maximum
-    since scaling the objective leaves the LP optimum invariant while
-    keeping the x-update in a well-conditioned regime. g_vec is the
+    absolute value for a linear objective. This preserves the LP optimum
+    and keeps the x-update well conditioned. g_vec is the
     diagonal of the quadratic term (zero for the plain relaxation,
     -2 lambda for the LDR variant). With rho large enough that
     g_i + rho * d_v > 0 the x-update is the unique minimizer of a
     separable quadratic, clipped to the unit cube. Tensors run on cuda
     when a GPU is available.
     """
+    if not np.isfinite(rho) or rho <= 0:
+        raise ValueError("rho must be positive and finite")
+    if not np.isfinite(alpha) or not 0 < alpha < 2:
+        raise ValueError("alpha must be between 0 and 2")
+    if max_iter < 1:
+        raise ValueError("max_iter must be positive")
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    h = np.asarray(h)
+    s = np.asarray(s)
+    if h.ndim != 2 or s.ndim != 2 or s.shape[1] != h.shape[0]:
+        raise ValueError("h and s must be compatible two-dimensional matrices")
+    if np.any((h != 0) & (h != 1)) or np.any((s != 0) & (s != 1)):
+        raise ValueError("h and s must be binary")
     m, n = h.shape
-    if m == 0:
-        out = torch.zeros(s.shape[0], n, device=dev)
-        return (out, out, out) if return_state else out
+    batch = s.shape[0]
     idx, mask_np = build_tanner(h)
     mask = torch.as_tensor(mask_np, device=dev)
     flat_idx = torch.as_tensor(idx.reshape(-1), device=dev)
-    batch = s.shape[0]
     parity = torch.as_tensor(s, dtype=torch.long, device=dev)
     d_v = torch.as_tensor((h != 0).sum(axis=0), dtype=torch.float32,
                           device=dev)
-    if c_vec is None:
-        c = torch.ones(n, device=dev)
-    else:
-        c = torch.as_tensor(c_vec, dtype=torch.float32, device=dev)
-        c = c / c.max()
-    if g_vec is None:
-        g = torch.zeros(n, device=dev)
-    else:
-        g = torch.as_tensor(g_vec, dtype=torch.float32, device=dev)
+    c = torch.ones(n, device=dev) if c_vec is None else torch.as_tensor(
+        c_vec, dtype=torch.float32, device=dev)
+    g = torch.zeros(n, device=dev) if g_vec is None else torch.as_tensor(
+        g_vec, dtype=torch.float32, device=dev)
+    for name, value in (("c_vec", c), ("g_vec", g)):
+        if value.shape not in ((n,), (batch, n)) or not torch.isfinite(value).all():
+            raise ValueError(f"{name} must be finite with shape (n,) or (batch, n)")
+    # Positive rescaling preserves a linear objective, including signed
+    # LLRs. LDR supplies a quadratic term and already normalized c0;
+    # rescaling only c there would change the intended objective.
+    if c_vec is not None and g_vec is None and c.numel():
+        scale = c.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
+        c = c / scale
+    connected = d_v > 0
     denom = rho * d_v + g
+    if torch.any(connected & (denom <= 0)):
+        raise ValueError("rho is too small for the quadratic penalty")
+    # Unchecked DEM mechanisms are independent one-variable problems.
+    # They must not divide by degree zero or be forced to the wrong MAP bit.
+    safe_g = torch.where(g > 0, g, 1.0)
+    isolated = torch.where(g > 0, (-c / safe_g).clamp(0.0, 1.0),
+                           (c + 0.5 * g < 0).to(c.dtype))
+    if m == 0 or batch == 0:
+        x = isolated.expand(batch, n).clone()
+        z = torch.zeros(batch, m, idx.shape[1], device=dev)
+        return (x, z, z.clone()) if return_state else x
     if z_init is not None:
-        z = z_init
-        x = x_init if x_init is not None else torch.zeros(batch, n, device=dev)
-        y = y_init if y_init is not None else -rho * z
+        z = z_init.clone()
+        x = x_init.clone() if x_init is not None else torch.zeros(batch, n, device=dev)
+        y = y_init.clone() if y_init is not None else torch.zeros_like(z)
     else:
         z = parity_polytope_projection(
             torch.zeros(batch, m, idx.shape[1], device=dev), parity, mask,
             max_r=max_r)
-        y = -rho * z
+        y = torch.zeros_like(z)
         x = torch.zeros(batch, n, device=dev)
     pad = torch.zeros(batch, n + 1, device=dev)
+    done = torch.zeros(batch, dtype=torch.bool, device=dev)
+    safe_denom = torch.where(connected, denom, 1.0)
     for _ in range(max_iter):
-        pad[:, :n] = x
-        x_exp = pad[:, flat_idx].view(batch, m, -1)
         sums = torch.zeros(batch, n + 1, device=dev)
         sums.index_add_(1, flat_idx, (rho * z - y).reshape(batch, -1))
-        x_new = ((sums[:, :n] - c) / denom).clamp(0.0, 1.0)
+        x_new = ((sums[:, :n] - c) / safe_denom).clamp(0.0, 1.0)
+        x_new = torch.where(connected, x_new, isolated)
         pad[:, :n] = x_new
         x_exp = pad[:, flat_idx].view(batch, m, -1)
         y_half = y + rho * (alpha - 1.0) * (x_exp - z)
         z_new = parity_polytope_projection(x_exp + y_half / rho, parity,
                                            mask, max_r=max_r)
-        y = y_half + rho * (x_exp - z_new)
-        if (torch.norm(x_exp - z_new) <= tol_pri
-                and torch.norm(z_new - z) <= tol_dual):
-            x = x_new
+        y_new = y_half + rho * (x_exp - z_new)
+        primal = torch.linalg.vector_norm((x_exp - z_new).flatten(1), dim=1)
+        dual = rho * torch.linalg.vector_norm((z_new - z).flatten(1), dim=1)
+        # Freeze converged shots so decoding does not depend on which
+        # other shots happen to share a benchmark batch.
+        x = torch.where(done[:, None], x, x_new)
+        z = torch.where(done[:, None, None], z, z_new)
+        y = torch.where(done[:, None, None], y, y_new)
+        done |= (primal <= tol_pri) & (dual <= tol_dual)
+        if bool(done.all()):
             break
-        x, z = x_new, z_new
-    if return_state:
-        return x, z, y
-    return x
+    return (x, z, y) if return_state else x
 
 
 def admm_ldr_solve(h, s, rho=2.0, alpha=1.0, max_iter=500, device=None,
@@ -272,35 +200,55 @@ def admm_ldr_solve(h, s, rho=2.0, alpha=1.0, max_iter=500, device=None,
     Outer loop updates lambda by the subgradient x - x**2 with a
     diminishing step; the inner ADMM uses c = c0 + lambda and
     g = -2 lambda, warm-started from the previous solution. Stops when
-    x is integral to tolerance or the outer budget is spent.
+    x is integral and syndrome-feasible, or the outer budget is spent.
     """
     dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if outer < 1 or not np.isfinite(beta) or beta < 0:
+        raise ValueError("outer must be positive and beta finite and nonnegative")
     batch = s.shape[0]
     n = h.shape[1]
     if c_vec is None:
         c0 = torch.ones(n, device=dev)
     else:
         c0 = torch.as_tensor(c_vec, dtype=torch.float32, device=dev)
-        c0 = c0 / c0.max()
+        if c0.shape not in ((n,), (batch, n)) or not torch.isfinite(c0).all():
+            raise ValueError("c_vec must be finite with shape (n,) or (batch, n)")
+        if c0.numel():
+            c0 = c0 / c0.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
     lam = torch.zeros(batch, n, device=dev)
     x = None
     z = None
     y = None
+    done = torch.zeros(batch, dtype=torch.bool, device=dev)
+    h_tensor = torch.as_tensor(h, dtype=torch.float32, device=dev)
+    syndrome = torch.as_tensor(s, dtype=torch.float32, device=dev)
     for k in range(outer):
-        x, z, y = admm_solve_batch(
+        x_new, z_new, y_new = admm_solve_batch(
             h, s, rho=rho, alpha=alpha, max_iter=max_iter, device=dev,
             max_r=max_r, c_vec=(c0 + lam), g_vec=(-2.0 * lam),
             x_init=x, z_init=z, y_init=y, return_state=True)
-        if (x - x * x).abs().max().item() <= tol:
+        if x is None:
+            x, z, y = x_new, z_new, y_new
+        else:
+            x = torch.where(done[:, None], x, x_new)
+            z = torch.where(done[:, None, None], z, z_new)
+            y = torch.where(done[:, None, None], y, y_new)
+        if x.numel() == 0:
             break
-        lam = lam + (beta / (k + 1) ** 0.5) * (x - x * x)
+        integral = (x - x * x).abs().amax(dim=1) <= tol
+        feasible = (torch.remainder(x.round() @ h_tensor.T, 2) == syndrome).all(dim=1)
+        done |= integral & feasible
+        if bool(done.all()):
+            break
+        lam = lam + torch.where(done[:, None], 0.0,
+                                 (beta / (k + 1) ** 0.5) * (x - x * x))
     return x
 
 
 class AdmmOsdDecoder:
     """ADMM relaxation decoding with OSD post-processing for CSS codes.
 
-    Mirrors LpOsdDecoder so benchmark_iid and the sinter wiring apply
+    Mirrors LpOsdDecoder so benchmark_iid and the array decoding interface apply
     unchanged. osd_order: 0 for OSD-0, 1 for OSD-0 plus the combination
     sweep (OSD-CS).
     """
@@ -313,8 +261,8 @@ class AdmmOsdDecoder:
         self.h_z = h_z.astype(np.int8)
         self.l_x = l_x.astype(np.int8)
         self.l_z = l_z.astype(np.int8)
-        self.p_x = float(p_x)
-        self.p_z = float(p_z)
+        self.p_x = np.asarray(p_x, dtype=float)
+        self.p_z = np.asarray(p_z, dtype=float)
         self.osd_order = osd_order
         self.osd_lam = osd_lam
         self.rho = rho
@@ -346,6 +294,9 @@ class AdmmOsdDecoder:
 
         Return (corr_x, corr_z), each (batch, n) int8 per-qubit corrections.
         """
+        if sx.shape[0] == 0 and sz.shape[0] == 0:
+            return (np.zeros((0, self.h_z.shape[1]), dtype=np.int8),
+                    np.zeros((0, self.h_x.shape[1]), dtype=np.int8))
         kw = dict(rho=self.rho, alpha=self.alpha, max_iter=self.max_iter,
                   max_r=self.max_r)
         if self.ldr:
@@ -376,7 +327,7 @@ class AdmmOsdDecoder:
         return c_x[0], c_z[0]
 
     def decode_batch(self, shots):
-        """Decode in the sinter protocol.
+        """Predict observable flips from unpacked detector arrays.
 
         shots: (batch, m_z + m_x) syndromes, concatenated [sigma_x | sigma_z].
         Return (batch, 2k) predicted observable flips

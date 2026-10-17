@@ -2,26 +2,19 @@
 
 ## Abstract
 
-DRAFT. Belief propagation with ordered statistics decoding (BP+OSD) is the
-standard decoder for quantum low-density parity-check (QLDPC) codes. Gu and
-Soleimanifar (IEEE Trans. Inf. Theory 72(10), 2026) showed that linear
-programming (LP) decoding with OSD post-processing slightly outperforms
-BP+OSD for bivariate bicycle codes at code capacity, and flagged the
-question of whether the advantage survives more realistic noise. We
-implement the parity-polytope relaxation solved by exact LP and by the
-alternating direction method of multipliers (ADMM), and benchmark them
-against BP+OSD under phenomenological noise on the [[72,12,6]] bivariate
-bicycle code. Plain ADMM+OSD loses the code-capacity edge and, at the
-rate with the most statistical power (p = 0.02), is significantly worse
-than BP+OSD (0.138 versus 0.118, 3.9 sigma, 2000 shots). The LLR-weighted
-variant prescribed by the paper's Appendix C, with a normalization the
-paper omits, recovers statistical parity with BP+OSD at all measured
-rates but shows no significant advantage; the 300-shot hints of a
-low-rate edge wash out at 2000 shots. An LDR variant with an adaptive
-penalty shows no consistent gain at four outer iterations. We also
-report an implementation finding: the naive LLR weighting collapses ADMM
-to the trivial fixed point, and normalizing the weights is required for
-convergence.
+DRAFT — CORRECTED RESULTS PENDING. We study whether optimization-based
+quantum LDPC decoders retain an advantage over BP+OSD under measurement
+noise. The implementation includes exact LP decoding at code capacity,
+batched parity-polytope ADMM variants, and phenomenological memory
+experiments on bivariate bicycle codes. An implementation audit found
+incorrect BP messages at tied reliabilities and a capped ADMM projection
+that could violate the intended relaxation. Both affected the historical
+comparisons reported below. The corrected benchmark also matches BP data
+and measurement priors, closes the experiment with a perfect terminal
+syndrome, and retains paired per-shot outcomes. Corrected high-statistics
+results are required before concluding that an advantage survives or
+disappears. The numerical tables in this draft are historical provenance,
+not validated evidence for a decoder ranking.
 
 ## 1. Introduction
 
@@ -35,11 +28,10 @@ suffers on degenerate codes because short cycles create ambiguities
 Optimization-based decoding is the alternative: the maximum-likelihood
 decoding problem relaxes to a linear program [Feldman; Li-Vontobel], and
 Gu and Soleimanifar show LP+OSD outperforms BP+OSD at code capacity for
-bivariate bicycle codes up to [[288,12,18]]. Their conclusion states,
-verbatim, that determining whether the advantage survives circuit-level
-or phenomenological noise is the important open question; their Appendix
-C sketches the extension but reports no numerics. This paper runs that
-experiment at the phenomenological level.
+bivariate bicycle codes up to [[288,12,18]]. Their conclusion motivates evaluating the decoder under more realistic
+noise. This project investigates the phenomenological extension; the
+literature review and exact citation details remain to be verified before
+submission.
 
 ## 2. Methods
 
@@ -51,27 +43,33 @@ i.i.d. depolarizing data errors (marginal rate 2p/3 per Pauli) and
 syndrome measurement flips at rate p. The detector syndrome is
 delta_t = h e_t xor m_t xor m_{t-1}, giving a block-bidiagonal
 time-expanded check matrix with d data blocks and d measurement blocks.
+The corrected protocol adds a noiseless terminal measurement, giving an
+extra detector block delta_(d+1) = m_d. The historical tables used an open
+terminal boundary and logical-only scoring. These protocols are distinct
+and their estimates must not be pooled.
 
 ### 2.2 Decoders
 
 - **BP+OSD**: min-sum BP, 30 iterations, OSD with a one-pass combination
-  sweep (OSD-CS, lambda = 1).
+  greedy sweep, or the explicitly selected exhaustive
+  OSD-CS(lambda) variant. Corrected BP uses per-column priors 2p/3 for data
+  and p for measurement errors.
 - **LP+OSD**: the exact LP relaxation (Eq. 2 of Gu-Soleimanifar),
   solved with HiGHS, qubit indicators fed to OSD with Tanner-distance
   tie breaking (their Sec. V). Code capacity only; the subset
   formulation grows exponentially at detector scale.
 - **ADMM+OSD**: the parity-polytope relaxation (their QP (8) with g = 0,
   c = 1), plain ADMM with rho = 2.0 (tuned runs use rho = 4.0, chosen
-  by the Section 3.2 sweep). The projection onto the parity
-  polytope is exact, computed from the two-slice representation
-  [Barman et al.] with a segment walk that resolves roots at clip and
-  sort-switch breakpoints.
+  by the historical Section 3.2 sweep; the corrected solver needs fresh
+  tuning). The corrected projection uses a forbidden-set cut search [Gensheimer et al.] and
+  a scalar root solve to floating-point precision. It does not truncate
+  the available parity slices or fall back to box-only clipping.
 - **ADMM-w+OSD**: per-column LLR weights per their Appendix C (data
   columns weighted by 2p/3, measurement columns by p), normalized by
-  the maximum weight. The normalization leaves the LP optimum invariant
-  but is required for convergence: without it the first x-update clips
-  every coordinate to zero and the iteration locks at the trivial fixed
-  point (Section 4.2).
+  the maximum absolute weight. Positive scaling preserves the LP optimum
+  and changes the relative objective/penalty scale in finite-iteration
+  ADMM. The historical claim that normalization is necessary for
+  convergence must be reassessed after the projection repair.
 - **LDR+OSD**: the adaptive-penalty variant of their companion ISIT
   2026 paper, with a diminishing step beta/sqrt(k+1) and four outer
   iterations, warm-started between inner solves.
@@ -82,11 +80,25 @@ any invalid correction are flagged.
 
 ### 2.3 Benchmark protocol
 
-Fixed seeds, 300 shots per point for the comparison sweep and 2000 shots
-for the confirmation points, zero invalid corrections throughout.
-Logical error rate estimated per X and Z logical sectors jointly.
+Historical runs used 300-shot explorations, 2000-shot confirmations,
+and selected 10000-shot four-seed cells. They reported no invalid final
+OSD corrections; this does not validate the preceding BP or ADMM steps.
 
-## 3. Results
+Corrected runs sample one error set for all variants and decode it in
+bounded batches. They save integer failure counts, per-shot failure and
+residual-syndrome indicators, a sample fingerprint, protocol version,
+solver parameters, environment, and source revision. Closed-memory
+failure includes logical flips, residual data syndrome, or invalid
+detector corrections. Paired McNemar comparisons use the same saved
+sample set; independent two-proportion statistics are descriptive only
+when outcomes are paired. Reruns must disclose tuning/selection and
+multiple comparisons. BP/OSD execute on CPU; ADMM can execute on CUDA.
+
+## 3. Historical results — require corrected reruns
+
+All in-tree decoder comparisons in this section predate the correctness
+repairs. Point estimates are retained for traceability; the earlier
+advantage/deficit and equivalence interpretations are withdrawn.
 
 ### 3.1 Code capacity
 
@@ -97,8 +109,8 @@ Logical error rate estimated per X and Z logical sectors jointly.
 - p=0.08: LP 0.096 · BP 0.088 · bposd 0.08475
 - p=0.10: LP 0.294 · BP 0.302 · bposd 0.23210
 
-LP+OSD sits at or below BP+OSD at three of four points, reproducing the
-paper's qualitative claim at the settings used here.
+The external reference and in-tree point estimates used different shot
+counts. The in-tree BP baseline must be rerun before interpretation.
 
 ### 3.2 Phenomenological noise
 
@@ -115,13 +127,13 @@ paper's qualitative claim at the settings used here.
 - p=0.010: BP 0.02000 · ADMM 0.02150 · ADMM-w 0.01800
 - p=0.020: BP 0.11800 · ADMM 0.13800 · ADMM-w 0.12450
 
-The low-rate edges seen at 300 shots wash out at 2000 shots (all within
-1 sigma). At p = 0.020 the plain-ADMM deficit at the default rho = 2 is
-significant: 0.138 versus 0.118, 3.9 sigma (40 excess failures at 2000
-shots). The weighted variant recovers parity, 1.3 sigma above BP, and
-is not significantly different from BP at any measured rate. Plain
-ADMM trails BP at three of four rates in the sweep and at all three
-confirmed rates.
+The earlier 3.9-sigma claim for 0.138 versus 0.118 at 2000 shots per
+decoder was incorrect under the stated independent two-proportion method:
+the pooled value is approximately 1.89 sigma. For 0.1245 versus 0.118 it
+is approximately 0.63 sigma, rather than 1.3. Because variants share
+sampled errors, valid paired inference requires discordant outcome counts
+that the old runs did not retain. These arithmetic corrections do not
+validate the historical decoder implementations.
 
 Complete fan-out at rho = 4, four independent 2500-shot seeds
 (10^4 shots per cell):
@@ -130,12 +142,12 @@ Complete fan-out at rho = 4, four independent 2500-shot seeds
 - p=0.020, OSD-CS(60): BP 0.11440 · ADMM 0.11040 · ADMM-w 0.10200
 - p=0.010, greedy: BP 0.02230 · ADMM 0.02220 · ADMM-w 0.02110
 
-Tuning the penalty washes out the plain-ADMM deficit: +0.0047
-(1.0 sigma) against BP instead of the 0.020 (3.9 sigma) at rho = 2.
-The reference OSD-CS(60) sweep moves plain ADMM to -0.0040
-(-0.9 sigma), and the LLR-weighted variant reaches -0.0124
-(-2.8 sigma) below BP+OSD at p = 0.020. The p = 0.010 cells are all
-within 0.6 sigma. Zero invalid corrections throughout.
+The weighted OSD-CS(60) point is 0.0124 below the historical BP estimate.
+A descriptive independent two-proportion calculation is about 2.8 sigma;
+it is neither a valid paired test nor evidence of an advantage after the
+implementation audit. The setting was selected among several explored
+variants. It should be rerun with the corrected protocol and independently
+replicated after settings are fixed.
 
 ### 3.3 Preliminary code-size data
 
@@ -144,41 +156,46 @@ within 0.6 sigma. Zero invalid corrections throughout.
 - p=0.005: BP 0.00667 · ADMM 0.01000 · ADMM-w 0.00333
 - p=0.010: BP 0.03333 · ADMM 0.05667 · ADMM-w 0.04333
 
-The same ordering as the [[72,12,6]] data: plain ADMM worst, the
-weighted variant between plain and BP, all gaps sub-2-sigma at 300
-shots.
+These are exploratory point estimates. Their ordering differs between
+rates; corrected confirmation counts on this code are outstanding. A
+previous high-shot attempt exhausted memory before producing results.
 
 ### 3.4 The weighting normalization
 
-Applying the Appendix C weights verbatim produces all-zero corrections:
-with c_i near 5 the first x-update clips every coordinate to zero and
-the ADMM iterates stay at the trivial fixed point regardless of
-iteration count. Normalizing the weights by their maximum (objective
-scaling leaves the LP optimum invariant) restores the plain-ADMM
-convergence profile. The paper does not mention this normalization.
+The pre-audit implementation produced poor behavior with unnormalized
+LLR weights. This observation cannot be separated from its projection
+and stopping defects. The corrected solver rescales a linear objective
+by a positive factor for conditioning; it preserves the LP optimum.
+When a quadratic LDR penalty is present, the linear term is not
+independently renormalized, which would change the intended objective.
+Convergence sensitivity and any normalization requirement need new tests
+at the reported benchmark settings.
 
 ## 4. Discussion
 
-The measured answer to the open question is mostly negative with
-one exception. The LP-family code-capacity advantage over BP+OSD
-does not survive phenomenological noise in the naive setting, and
-the significant plain-ADMM degradation (3.9 sigma at rho = 2) is
-largely settings-dependent: at the tuned penalty rho = 4 the
-plain-ADMM deficit washes out to 1.0 sigma over 10^4 shots. One
-cell keeps an advantage: the LLR-weighted ADMM with rho = 4 and
-the reference OSD-CS(lambda = 60) sweep sits 0.0124 below BP+OSD
-at p = 0.020 (2.8 sigma, nominal p about 0.005, uncorrected for
-the multiple settings tested), with parity everywhere else. A
-small advantage may survive for the properly configured weighted
-variant; a targeted replication at that cell is the next step.
-Limitations: the [[144,12,12]] data is preliminary (300 shots,
-sub-2-sigma), the LDR step size and outer iteration count are our
-choices, the ADMM is GPU-nondeterministic at the few-failures
-level, and circuit-level noise via stim/sinter is the natural
-next step.
+The scientific question remains open within this project. The historical
+comparisons do not establish a loss, retention, or recovery of an ADMM
+advantage because both the BP baseline and ADMM relaxation path had
+correctness defects. The corrected implementation has regression coverage
+against independent message and convex-projection oracles, but those
+checks are not a substitute for corrected high-statistics experiments.
+
+Next steps are a fresh matched-prior tuning/baseline run, independent
+confirmation of fixed settings, larger-code validation, and manuscript
+integration. Protocol sensitivity should compare closed and explicitly
+legacy open terminal boundaries without pooling their outcomes.
+Remaining limitations include finite ADMM iteration budgets, exploratory
+LDR settings, GPU nondeterminism, unequal CPU/GPU execution, and an
+optional preliminary circuit experiment. A nonsignificant comparison
+does not establish statistical equivalence.
 
 ## References
 
 [DRAFT: Bravyi et al. Nature 2024; Roffe et al. PRR 2020; Gu and
 Soleimanifar TIT 2026 and ISIT 2026; Barman et al. IEEE TIT 2013; Li and
 Vontobel ISIT 2018; SymBreak arXiv:2412.02885.]
+
+Projection reference: F. Gensheimer, T. Dietz, K. Kraft, S. Ruzika,
+and N. Wehn, “A Reduced-Complexity Projection Algorithm for ADMM-based
+LP Decoding,” arXiv:1901.03240 (2019), Section IV.
+[arXiv:1901.03240](https://arxiv.org/abs/1901.03240)

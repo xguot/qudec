@@ -8,8 +8,8 @@
 #   QUDEC_SHOTS=2500 QUDEC_SEED=0 sbatch hpc/run_phenom_144.slurm 0.005
 #   QUDEC_SHOTS=2500 QUDEC_SEED=1 sbatch hpc/run_phenom_144.slurm 0.005
 #
-# Sizing from hpc/logs: 300 shots at p = 0.010 take about 13 minutes
-# per ADMM variant, so 2500 shots fit the 12-hour limit per p.
+# Historical runtimes predate corrected projection and closed boundaries.
+# QUDEC_BATCH_SIZE bounds decoder memory independently of total shots.
 
 #SBATCH --job-name=qudec_144
 #SBATCH --output=hpc/logs/qudec_144_%j.out
@@ -40,16 +40,29 @@ for CAND in \
     fi
 done
 
+# Corrected closed-memory protocol; historical log rates are not comparable.
 SHOTS="${QUDEC_SHOTS:-300}"
 SEED="${QUDEC_SEED:-0}"
-VARIANTS="${QUDEC_VARIANTS:-bp,admm,admm-w}"
-
-EXTRA="${@}"
-if [[ -z "${EXTRA}" ]]; then
-    EXTRA="0.005 0.010"
+DEC_ARGS=(--batch-size "${QUDEC_BATCH_SIZE:-64}"
+          --admm-rho "${QUDEC_RHO:-2}"
+          --admm-alpha "${QUDEC_ALPHA:-1.0}"
+          --output "${QUDEC_OUTPUT:-results/phenom_144_${SLURM_JOB_ID:-local}.jsonl}")
+if [[ -n "${QUDEC_OSD_LAM:-}" ]]; then
+    DEC_ARGS+=(--osd-lam "${QUDEC_OSD_LAM}")
+fi
+if [[ -n "${QUDEC_P_MEAS:-}" ]]; then
+    DEC_ARGS+=(--p-meas "${QUDEC_P_MEAS}")
+fi
+if [[ "${QUDEC_LEGACY_OPEN_BOUNDARY:-0}" == "1" ]]; then
+    DEC_ARGS+=(--legacy-open-boundary)
+fi
+EXTRA=("$@")
+if [[ ${#EXTRA[@]} -eq 0 ]]; then
+    EXTRA=(0.005 0.010)
 fi
 
 echo "=== python: ${PY} ==="
-echo "=== shots: ${SHOTS} seed: ${SEED} ==="
+echo "=== shots: ${SHOTS} seed: ${SEED} dec args: ${DEC_ARGS[*]} ==="
 "${PY}" -u scripts/bench_phenom.py 144 6 "${SHOTS}" \
-    --variants "${VARIANTS}" --seed "${SEED}" ${EXTRA}
+    --variants "${QUDEC_VARIANTS:-bp,admm,admm-w}" --seed "${SEED}" \
+    "${DEC_ARGS[@]}" "${EXTRA[@]}"

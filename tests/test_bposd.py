@@ -23,6 +23,22 @@ def make_decoder(h_x, h_z, p=0.1, osd_order=1):
 
 
 class TestBpOsd(unittest.TestCase):
+    def test_per_column_channel_priors(self):
+        h = np.array([[1, 1]], dtype=np.int8)
+        l = np.array([[1, 0]], dtype=np.int8)
+        dec = BpOsdDecoder(h, h, l, l, [.01, .25], [.25, .01],
+                           max_iter=0, osd_order=0)
+        c_x, c_z = dec.decode(np.array([1]), np.array([1]))
+        np.testing.assert_array_equal(c_x, [0, 1])
+        np.testing.assert_array_equal(c_z, [1, 0])
+
+    def test_invalid_channel_priors(self):
+        h_x, h_z = steane_code()
+        l_x, l_z = logicals(h_x, h_z)
+        for p in (0, 1, float("nan"), [.1, .2]):
+            with self.subTest(p=p), self.assertRaises(ValueError):
+                BpOsdDecoder(h_x, h_z, l_x, l_z, p, .1)
+
     def test_zero_syndrome_zero_correction(self):
         for h_x, h_z in (gross_code(), steane_code(), repetition_code(5)):
             dec = make_decoder(h_x, h_z)

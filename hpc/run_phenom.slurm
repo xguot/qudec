@@ -37,8 +37,24 @@ for CAND in \
 done
 
 CODE="${1:-72}"
-EXTRA="${@:2}"
+EXTRA=("${@:2}")
+DEC_ARGS=(--batch-size "${QUDEC_BATCH_SIZE:-64}"
+          --seed "${QUDEC_SEED:-0}"
+          --admm-rho "${QUDEC_RHO:-2}"
+          --admm-alpha "${QUDEC_ALPHA:-1.0}"
+          --output "${QUDEC_OUTPUT:-results/phenom_${CODE}_${SLURM_JOB_ID:-local}.jsonl}")
+if [[ -n "${QUDEC_OSD_LAM:-}" ]]; then
+    DEC_ARGS+=(--osd-lam "${QUDEC_OSD_LAM}")
+fi
+if [[ -n "${QUDEC_P_MEAS:-}" ]]; then
+    DEC_ARGS+=(--p-meas "${QUDEC_P_MEAS}")
+fi
+if [[ "${QUDEC_LEGACY_OPEN_BOUNDARY:-0}" == "1" ]]; then
+    DEC_ARGS+=(--legacy-open-boundary)
+fi
 
 echo "=== python: ${PY} ==="
-"${PY}" -m unittest tests.test_phenom -v
-"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 300 ${EXTRA}
+"${PY}" -m unittest discover -s tests -p test_phenom.py -v
+"${PY}" -u scripts/bench_phenom.py "${CODE}" 6 "${QUDEC_SHOTS:-300}" \
+    --variants "${QUDEC_VARIANTS:-bp,admm,admm-w,admm-ldr}" \
+    "${DEC_ARGS[@]}" "${EXTRA[@]}"

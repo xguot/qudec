@@ -20,18 +20,20 @@ stim is imported lazily so the numpy-only helpers run without it.
 import numpy as np
 
 
-def dem_check_matrix(dem):
+def dem_check_matrix(dem, return_probabilities=False):
     """Return (h, l) binary matrices from a detector error model.
 
     h: (num_detectors, num_errors), one column per independent error
     mechanism; l: (num_observables, num_errors). Accepts a stim dem or
     any iterable of instructions exposing .type and .targets_copy(), so
-    the extraction tests with stubs.
+    the extraction tests with stubs. When return_probabilities is true,
+    also return a probability vector aligned with the error columns.
     """
     m = dem.num_detectors
     k = dem.num_observables
     cols = []
     obs_rows = []
+    probabilities = []
     for instr in dem.flattened():
         if instr.type != "error":
             continue
@@ -39,17 +41,21 @@ def dem_check_matrix(dem):
         obs_col = np.zeros(k, dtype=np.int8)
         for t in instr.targets_copy():
             if t.is_relative_detector_id():
-                col[t.val] = 1
+                col[t.val] ^= 1
             elif t.is_logical_observable_id():
-                obs_col[t.val] = 1
+                obs_col[t.val] ^= 1
         cols.append(col)
         obs_rows.append(obs_col)
+        if return_probabilities:
+            probabilities.append(instr.args_copy()[0])
     if not cols:
         h = np.zeros((m, 0), dtype=np.int8)
         l = np.zeros((k, 0), dtype=np.int8)
     else:
         h = np.stack(cols, axis=1).astype(np.int8)
         l = np.stack(obs_rows, axis=1).astype(np.int8)
+    if return_probabilities:
+        return h, l, np.asarray(probabilities, dtype=float)
     return h, l
 
 
@@ -66,6 +72,12 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
     """Return the stim circuit for a d-round noisy memory experiment."""
     import stim
 
+    if basis not in ("X", "Z"):
+        raise ValueError("basis must be X or Z")
+    if not isinstance(d, (int, np.integer)) or d < 1:
+        raise ValueError("d must be a positive integer")
+    if not np.isfinite(p) or not 0 <= p <= 1:
+        raise ValueError("p must be a probability between 0 and 1")
     h_x = np.asarray(h_x)
     h_z = np.asarray(h_z)
     l_x = np.asarray(l_x)
@@ -98,8 +110,7 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
             for q in np.nonzero(h_z[i])[0]:
                 c.append("CNOT", [int(q), a])
                 c.append("DEPOLARIZE2", [int(q), a], p)
-            c.append("M", [a])
-            c.append("DEPOLARIZE1", [a], p)
+            c.append("M", [a], p)
         for i in range(m_x):
             a = n + r * (m_z + m_x) + m_z + i
             c.append("RX", [a])
@@ -109,8 +120,7 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
                 c.append("DEPOLARIZE2", [a, int(q)], p)
             c.append("H", [a])
             c.append("DEPOLARIZE1", [a], p)
-            c.append("M", [a])
-            c.append("DEPOLARIZE1", [a], p)
+            c.append("M", [a], p)
         for i in range(m_z):
             meas_z.append(rec0 + i)
         for i in range(m_x):
@@ -119,6 +129,9 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
             if basis == "Z":
                 for i in range(m_z):
                     c.append("DETECTOR", [rec(meas_z[i])])
+            else:
+                for i in range(m_x):
+                    c.append("DETECTOR", [rec(meas_x[i])])
         else:
             for i in range(m_z):
                 c.append("DETECTOR",
@@ -133,8 +146,7 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
         if basis == "X":
             c.append("H", [q])
             c.append("DEPOLARIZE1", [q], p)
-        c.append("M", [q])
-        c.append("DEPOLARIZE1", [q], p)
+        c.append("M", [q], p)
     rec_data = c.num_measurements - n
     if basis == "Z":
         for i in range(m_z):
@@ -142,24 +154,24 @@ def build_memory_circuit(h_x, h_z, l_x, l_z, d, p, basis="Z"):
             for q in np.nonzero(h_z[i])[0]:
                 det.append(rec(rec_data + int(q)))
             c.append("DETECTOR", det)
-        for row in l_z:
+        for logical_id, row in enumerate(l_z):
             obs = [rec(rec_data + int(q))
                    for q in np.nonzero(row)[0]]
-            c.append("OBSERVABLE_INCLUDE", obs, 0)
+            c.append("OBSERVABLE_INCLUDE", obs, logical_id)
     else:
         for i in range(m_x):
             det = [rec(meas_x[-m_x + i])]
             for q in np.nonzero(h_x[i])[0]:
                 det.append(rec(rec_data + int(q)))
             c.append("DETECTOR", det)
-        for row in l_x:
+        for logical_id, row in enumerate(l_x):
             obs = [rec(rec_data + int(q))
                    for q in np.nonzero(row)[0]]
-            c.append("OBSERVABLE_INCLUDE", obs, 0)
+            c.append("OBSERVABLE_INCLUDE", obs, logical_id)
     return c
 
 
 def sample_memory(circuit, shots, seed=0):
     """Return (dets, obs) sampled from the compiled detector sampler."""
     sampler = circuit.compile_detector_sampler(seed=seed)
-    return sampler.sample(shots, append_observables=True)
+    return sampler.sample(shots, separate_observables=True)

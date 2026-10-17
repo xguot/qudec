@@ -1,123 +1,76 @@
-"""Tune the plain-ADMM hyperparameters under phenomenological noise.
+"""Paired ADMM rho/alpha and OSD-CS tuning under closed memory noise.
 
-Sweeps the ADMM penalty rho and over-relaxation alpha on the points
-where plain ADMM trails BP+OSD, and compares the one-pass greedy OSD
-sweep against the reference OSD-CS(lambda = 60) on both BP+OSD and
-ADMM+OSD. The weighted variant is included as the paper anchor. One
-CSV row per (variant, p) is appended to results/tune_<code>.csv.
+  python scripts/bench_tune.py 72 6 300 .02 --rhos 1,2,4 --alphas 1,1.5,1.8
 
-Usage:
-
-    python -u scripts/bench_tune.py <72|144> <rounds> [shots] [p ...] \\
-        [--rhos 1,2,4] [--alphas 1.0,1.5,1.8] [--lam 60] [--seed N]
+Uses the same bounded benchmark and JSONL outcome format as bench_phenom.
+The weighted ADMM anchor is included with both greedy and lambda OSD.
 """
 
-import csv
-import os
-import sys
-import time
+import argparse
+from pathlib import Path
 
 import numpy as np
 
+if __package__:
+    from .bench_phenom import common_parser, environment_metadata, positive_int, run_variant
+else:
+    from bench_phenom import common_parser, environment_metadata, positive_int, run_variant
 from qudec.admm import AdmmOsdDecoder
 from qudec.bposd import BpOsdDecoder
 from qudec.codes import gross_code, logicals, medium_code
-from qudec.phenom import PhenomDecoder, benchmark_phenom
-
-COLUMNS = ["code", "d", "p", "shots", "seed", "variant", "rho", "alpha",
-           "osd_lam", "ler", "ler_x", "ler_z", "invalid_x", "invalid_z",
-           "secs"]
+from qudec.phenom import phenom_priors, sample_phenom
 
 
-def parse_args(argv):
-    """Return (code, rounds, shots, ps, rhos, alphas, lam, seed)."""
-    code = argv[1]
-    d = int(argv[2])
-    shots = int(argv[3]) if len(argv) > 3 else 300
-    ps = [0.02]
-    rhos = [1.0, 2.0, 4.0]
-    alphas = [1.0, 1.5, 1.8]
-    lam = 60
-    seed = 0
-    rest = argv[4:]
-    i = 0
-    while i < len(rest):
-        tok = rest[i]
-        if tok == "--rhos":
-            rhos = [float(x) for x in rest[i + 1].split(",")]
-            i += 2
-        elif tok == "--alphas":
-            alphas = [float(x) for x in rest[i + 1].split(",")]
-            i += 2
-        elif tok == "--lam":
-            lam = int(rest[i + 1])
-            i += 2
-        elif tok == "--seed":
-            seed = int(rest[i + 1])
-            i += 2
-        elif tok.startswith("-"):
-            raise SystemExit(f"unknown option {tok}")
-        else:
-            ps = [float(t) for t in rest[i:]]
-            break
-    return code, d, shots, ps, rhos, alphas, lam, seed
+def positive_list(value):
+    try:
+        values = [float(v) for v in value.split(",")]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected comma-separated numbers") from exc
+    if not values or any(not np.isfinite(v) or v <= 0 for v in values):
+        raise argparse.ArgumentTypeError("values must be finite and positive")
+    if len(values) != len(set(values)):
+        raise argparse.ArgumentTypeError("grid values must be distinct")
+    return values
 
 
-def run(dec, h_x, h_z, l_x, l_z, p, d, shots, seed):
-    t0 = time.time()
-    res = benchmark_phenom(dec, h_x, h_z, l_x, l_z, p, d, shots, seed=seed)
-    res["secs"] = time.time() - t0
-    return res
+def parse_args(argv=None):
+    parser = common_parser(__doc__)
+    parser.add_argument("--rhos", type=positive_list, default=[1.0, 2.0, 4.0])
+    parser.add_argument("--alphas", type=positive_list, default=[1.0, 1.5, 1.8])
+    parser.add_argument("--lam", type=positive_int, default=60)
+    args = parser.parse_intermixed_args(argv)
+    if args.seed < 0 or any(v >= 2 for v in args.alphas):
+        parser.error("require seed >= 0 and alpha < 2")
+    args.ps = list(dict.fromkeys(args.ps or [0.02]))
+    return args
 
 
-def main():
-    code, d, shots, ps, rhos, alphas, lam, seed = parse_args(sys.argv)
-    h_x, h_z = medium_code() if code == "72" else gross_code()
-    l_x, l_z = logicals(h_x, h_z)
-    out_path = os.path.join("results", f"tune_{code}.csv")
-    os.makedirs("results", exist_ok=True)
-    new_file = not os.path.exists(out_path)
-    with open(out_path, "a", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=COLUMNS)
-        if new_file:
-            writer.writeheader()
-        for p in ps:
-            variants = [
-                ("bp", BpOsdDecoder,
-                 {"max_iter": 30, "osd_order": 1}, None, 0.0),
-                ("bp-lam", BpOsdDecoder,
-                 {"max_iter": 30, "osd_order": 1}, lam, 0.0),
-                ("admm", AdmmOsdDecoder,
-                 {"max_iter": 150, "osd_order": 1, "max_r": 4}, None, 2.0),
-                ("admm-lam", AdmmOsdDecoder,
-                 {"max_iter": 150, "osd_order": 1, "max_r": 4}, lam, 2.0),
-            ]
-            for rho in rhos:
-                for alpha in alphas:
-                    variants.append(
-                        (f"admm-r{rho:g}-a{alpha:g}", AdmmOsdDecoder,
-                         {"max_iter": 150, "osd_order": 1, "max_r": 4,
-                          "rho": rho, "alpha": alpha}, None, rho))
-            for name, cls, kw, osd_lam, rho in variants:
-                if osd_lam is not None:
-                    kw = dict(kw, osd_lam=osd_lam)
-                dec = PhenomDecoder(cls, h_x, h_z, l_x, l_z, d,
-                                    p_x=2 * p / 3, p_z=2 * p / 3, **kw)
-                res = run(dec, h_x, h_z, l_x, l_z, p, d, shots, seed)
-                row = {"code": code, "d": d, "p": p, "shots": shots,
-                       "seed": seed, "variant": name, "rho": rho,
-                       "alpha": kw.get("alpha", 1.0),
-                       "osd_lam": osd_lam if osd_lam else "",
-                       "ler": f"{res['ler']:.5f}",
-                       "ler_x": f"{res['ler_x']:.5f}",
-                       "ler_z": f"{res['ler_z']:.5f}",
-                       "invalid_x": res["invalid_x"],
-                       "invalid_z": res["invalid_z"],
-                       "secs": f"{res['secs']:.1f}"}
-                writer.writerow(row)
-                fh.flush()
-                print("[tune]", name, f"p={p:5.3f}",
-                      f"ler={res['ler']:.5f}", f"{res['secs']:.0f}s")
+def main(argv=None):
+    args = parse_args(argv)
+    h_x, h_z = medium_code() if args.code == "72" else gross_code()
+    matrices = h_x, h_z, *logicals(h_x, h_z)
+    output = args.output or Path("results") / f"tune_{args.code}.jsonl"
+    environment = environment_metadata()
+    for p in args.ps:
+        samples = sample_phenom(h_x, h_z, p, args.rounds, args.shots,
+                                seed=args.seed, p_meas=args.p_meas,
+                                terminal_perfect=not args.legacy_open_boundary)
+        p_x, p_z = phenom_priors(h_x, h_z, args.rounds, p, args.p_meas)
+        bp = {"max_iter": 30, "alpha": 0.9, "osd_order": 1}
+        admm = {"max_iter": 150, "rho": 2.0, "alpha": 1.0, "osd_order": 1}
+        weighted = dict(admm, weights_x=np.log((1-p_x)/p_x), weights_z=np.log((1-p_z)/p_z))
+        variants = [("bp", BpOsdDecoder, bp),
+                    ("bp-lam", BpOsdDecoder, dict(bp, osd_lam=args.lam)),
+                    ("admm", AdmmOsdDecoder, admm),
+                    ("admm-lam", AdmmOsdDecoder, dict(admm, osd_lam=args.lam)),
+                    ("admm-w", AdmmOsdDecoder, weighted),
+                    ("admm-w-lam", AdmmOsdDecoder, dict(weighted, osd_lam=args.lam))]
+        for rho in args.rhos:
+            for alpha in args.alphas:
+                variants.append((f"admm-r{rho:g}-a{alpha:g}", AdmmOsdDecoder,
+                                 dict(admm, rho=rho, alpha=alpha)))
+        for name, cls, kw in variants:
+            run_variant(args, matrices, p, samples, name, cls, kw, output, environment)
 
 
 if __name__ == "__main__":

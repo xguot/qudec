@@ -4,55 +4,38 @@ The dem check matrix has rows = detectors and columns = independent error
 mechanisms, with observables as rows of the observable matrix. The two
 decoders here run min-sum BP or the batched parity-polytope ADMM on the
 raw matrix, followed by OSD post-processing from qudec.osd. Error
-mechanisms are treated as independent with a uniform prior; this is the
-standard first-order decoder for circuit-level dems.
+mechanisms are treated as independent, using their individual DEM
+probabilities when supplied.
 
 torch is imported lazily so the module stays importable without it.
 """
 
 import numpy as np
 
+from qudec.bp import channel_llrs, min_sum_bp, probability_vector
 from qudec.osd import osd_decode
 
 
-def min_sum_bp(h, s, llr, max_iter=30, alpha=0.9):
-    """Run min-sum BP on one check matrix; return final LLRs (batch, n)."""
-    import torch
-
-    a = torch.as_tensor(h, dtype=torch.float32)
-    s = torch.as_tensor(s, dtype=torch.float32)
-    l_ch = torch.as_tensor(llr, dtype=torch.float32)
-    batch, n = s.shape[0], a.shape[1]
-    big = 1e4
-    l_vc = a.unsqueeze(0) * l_ch.view(1, 1, n)
-    for t in range(max_iter):
-        a_t = alpha if alpha is not None else 1.0 - 2.0 ** (-(t + 1))
-        abs_l = torch.where(a > 0, l_vc.abs(), big)
-        amin, _ = abs_l.min(dim=2)
-        asecond = torch.where(
-            abs_l == amin.unsqueeze(2), big, abs_l).min(dim=2).values
-        mag = torch.where(
-            abs_l == amin.unsqueeze(2), asecond.unsqueeze(2),
-            amin.unsqueeze(2)) * a.unsqueeze(0)
-        neg = (l_vc < 0) & (a > 0)
-        parity = (neg.sum(dim=2) + s) % 2
-        sign = (1 - 2 * parity).unsqueeze(2) * (
-            1 - 2 * (l_vc < 0).float())
-        m_cv = sign * mag * a_t
-        sum_in = m_cv.sum(dim=1)
-        l_vc = a.unsqueeze(0) * (
-            l_ch.view(1, 1, n) + sum_in.unsqueeze(1) - m_cv)
-    return l_ch.view(1, n) + m_cv.sum(dim=1)
+def _detector_shots(shots, h):
+    shots = np.asarray(shots)
+    if (shots.ndim != 2 or shots.shape[1] != h.shape[0]
+            or not np.all((shots == 0) | (shots == 1))):
+        raise ValueError(f"shots must be binary with {h.shape[0]} detector columns")
+    if np.any(shots[:, ~np.any(h, axis=1)]):
+        raise ValueError("an empty check cannot have nonzero syndrome")
+    return shots.astype(np.int8)
 
 
 class BpOsdDemDecoder:
     """Min-sum BP with OSD post-processing on a dem check matrix."""
 
     def __init__(self, h, l, p=0.01, max_iter=30, alpha=0.9,
-                 osd_order=1, osd_lam=None):
+                 osd_order=1, osd_lam=None, probabilities=None):
         self.h = h.astype(np.int8)
         self.l = l.astype(np.int8)
-        self.p = float(p)
+        prior = p if probabilities is None else probabilities
+        self.probabilities = probability_vector(prior, self.h.shape[1])
+        self.p = float(prior) if np.ndim(prior) == 0 else self.probabilities.copy()
         self.max_iter = max_iter
         self.alpha = alpha
         self.osd_order = osd_order
@@ -61,8 +44,10 @@ class BpOsdDemDecoder:
     def decode_batch(self, shots):
         """Decode detector shots (batch, m); return obs flips (batch, k)."""
         n = self.h.shape[1]
-        llr = np.full(n, np.log((1 - self.p) / self.p))
-        s = shots.astype(np.int8)
+        llr = channel_llrs(self.probabilities, n)
+        s = _detector_shots(shots, self.h)
+        if s.shape[0] == 0 or n == 0:
+            return np.zeros((s.shape[0], self.l.shape[0]), dtype=np.uint8)
         l_fin = min_sum_bp(self.h, s, llr, self.max_iter,
                            self.alpha).numpy()
         obs = []
@@ -78,7 +63,7 @@ class AdmmOsdDemDecoder:
     """Parity-polytope ADMM with OSD post-processing on a dem matrix."""
 
     def __init__(self, h, l, rho=2.0, alpha=1.0, max_iter=500,
-                 max_r=None, osd_order=1, osd_lam=None):
+                 max_r=None, osd_order=1, osd_lam=None, probabilities=None):
         self.h = h.astype(np.int8)
         self.l = l.astype(np.int8)
         self.rho = rho
@@ -87,16 +72,22 @@ class AdmmOsdDemDecoder:
         self.max_r = max_r
         self.osd_order = osd_order
         self.osd_lam = osd_lam
+        self.probabilities = (None if probabilities is None else
+                              probability_vector(probabilities, self.h.shape[1]))
+        self.weights = (None if self.probabilities is None else
+                        channel_llrs(self.probabilities, self.h.shape[1]))
 
     def decode_batch(self, shots):
         """Decode detector shots (batch, m); return obs flips (batch, k)."""
         from qudec.admm import admm_solve_batch
         from qudec.lp import syndrome_distance
 
-        s = shots.astype(np.int8)
+        s = _detector_shots(shots, self.h)
+        if s.shape[0] == 0 or self.h.shape[1] == 0:
+            return np.zeros((s.shape[0], self.l.shape[0]), dtype=np.uint8)
         x = admm_solve_batch(self.h, s, rho=self.rho, alpha=self.alpha,
                              max_iter=self.max_iter,
-                             max_r=self.max_r).cpu().numpy()
+                             max_r=self.max_r, c_vec=self.weights).cpu().numpy()
         obs = []
         for i in range(s.shape[0]):
             dist = syndrome_distance(self.h, s[i])

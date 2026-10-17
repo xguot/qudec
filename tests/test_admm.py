@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 import torch
-from scipy.optimize import minimize
+from scipy.optimize import LinearConstraint, minimize
 
 from qudec.admm import (
     AdmmOsdDecoder,
@@ -20,16 +20,20 @@ from qudec.noise import sample_iid_errors
 def reference_projection(a, b):
     """Project a onto the parity polytope via the explicit inequalities."""
     d = len(a)
-    cons = []
+    normals, bounds = [], []
     for mask in range(1 << d):
         if (mask.bit_count() % 2) != (1 - b) % 2:
             continue
         n = np.array([1.0 if (mask >> i) & 1 else -1.0 for i in range(d)])
-        cons.append({"type": "ineq",
-                     "fun": lambda x, n=n, m=mask: m.bit_count() - 1 - n @ x})
-    res = minimize(lambda x: ((x - a) ** 2).sum(), np.clip(a, 0, 1),
-                   bounds=[(0, 1)] * d, constraints=cons, method="trust-constr",
-                   options={"maxiter": 2000, "gtol": 1e-12, "xtol": 1e-14})
+        normals.append(n)
+        bounds.append(mask.bit_count() - 1)
+    constraints = LinearConstraint(np.array(normals), -np.inf, bounds)
+    res = minimize(lambda x: 0.5 * ((x - a) ** 2).sum(), np.clip(a, 0, 1),
+                   jac=lambda x: x - a, bounds=[(0, 1)] * d,
+                   constraints=constraints, method="SLSQP",
+                   options={"maxiter": 1000, "ftol": 1e-12})
+    if not res.success:
+        raise AssertionError(f"reference projection failed: {res.message}")
     return res.x
 
 
@@ -57,19 +61,48 @@ class TestParityProjection(unittest.TestCase):
 
     def test_matches_reference(self):
         rng = np.random.default_rng(7)
-        for d in (3, 4):
+        for d in (3, 4, 6, 8):
             mask = torch.ones(1, d, dtype=torch.bool)
             for b in (0, 1):
                 for _ in range(8):
-                    a = rng.uniform(-0.5, 1.5, d)
+                    a = rng.uniform(-3.0, 4.0, d)
                     ref = reference_projection(a, b)
                     out = parity_polytope_projection(
-                        torch.tensor([[a]], dtype=torch.float32),
+                        torch.from_numpy(a.reshape(1, 1, d)).float(),
                         torch.tensor([[b]]), mask).numpy()[0][0]
                     self.assertLess(
-                        float(np.abs(out - ref).max()), 2e-2,
+                        float(np.abs(out - ref).max()), 3e-5,
                         f"d={d} b={b} a={np.round(a, 3)} got "
                         f"{np.round(out, 3)} ref {np.round(ref, 3)}")
+
+    def test_high_weight_vertex_is_projected_despite_legacy_cap(self):
+        z = torch.tensor([[[1., 1., 1., 1., 1., 1., 1., 0.]]])
+        out = parity_polytope_projection(
+            z, torch.tensor([[0]]), torch.ones(1, 8, dtype=torch.bool), max_r=4)
+        expected = torch.tensor([[[.875] * 7 + [.125]]])
+        self.assertTrue(torch.allclose(out, expected, atol=2e-6))
+
+    def test_padding_and_degree_one(self):
+        mask = torch.tensor([[True, False, False], [True, True, False]])
+        z = torch.tensor([[[20., -100., 500.], [2., -2., 100.]]])
+        out = parity_polytope_projection(z, torch.tensor([[0, 0]]), mask)
+        self.assertTrue(torch.allclose(
+            out, torch.tensor([[[0., 0., 0.], [0., 0., 0.]]]), atol=2e-6))
+        odd = parity_polytope_projection(z, torch.tensor([[1, 1]]), mask)
+        self.assertTrue(torch.allclose(
+            odd, torch.tensor([[[1., 0., 0.], [1., 0., 0.]]]), atol=2e-6))
+
+    def test_empty_checks(self):
+        mask = torch.zeros(1, 0, dtype=torch.bool)
+        z = torch.zeros(2, 1, 0)
+        out = parity_polytope_projection(z, torch.zeros(2, 1), mask)
+        self.assertEqual(out.shape, z.shape)
+        with self.assertRaisesRegex(ValueError, "empty check"):
+            parity_polytope_projection(z, torch.ones(2, 1), mask)
+        with self.assertRaisesRegex(ValueError, "binary parities"):
+            parity_polytope_projection(torch.zeros(1, 1, 1),
+                                       torch.tensor([[0.9]]),
+                                       torch.ones(1, 1, dtype=torch.bool))
 
 
 class TestAdmm(unittest.TestCase):
@@ -129,6 +162,57 @@ class TestAdmm(unittest.TestCase):
 
 
 class TestAdmmVariants(unittest.TestCase):
+    def test_empty_batches_and_empty_variables(self):
+        for solver in (admm_solve_batch, admm_ldr_solve):
+            x = solver(np.ones((1, 2), np.int8), np.zeros((0, 1), np.int8),
+                       device="cpu")
+            self.assertEqual(x.shape, (0, 2))
+            x = solver(np.zeros((1, 0), np.int8), np.zeros((2, 1), np.int8),
+                       device="cpu")
+            self.assertEqual(x.shape, (2, 0))
+
+    def test_ldr_zero_and_signed_objectives(self):
+        h = np.ones((1, 2), np.int8)
+        for weights, expected in [(np.zeros(2), [.5, .5]),
+                                   (np.array([-1., -2.]), [0., 1.])]:
+            x = admm_ldr_solve(h, np.ones((1, 1), np.int8),
+                               c_vec=weights, outer=1, device="cpu").numpy()
+            np.testing.assert_allclose(x, [expected], atol=2e-5)
+
+    def test_ldr_integrality_stop_also_requires_feasibility(self):
+        x = admm_ldr_solve(np.ones((1, 3), np.int8),
+                           np.ones((1, 1), np.int8), max_iter=1,
+                           outer=2, device="cpu").numpy()
+        self.assertGreater(float(x.sum()), 0.1)
+
+    def test_isolated_columns_signed_and_zero_weights(self):
+        h = np.array([[1, 0, 0]], dtype=np.int8)
+        x = admm_solve_batch(h, np.array([[1]], np.int8),
+                             c_vec=np.array([0., -2., 0.]), device="cpu").numpy()
+        self.assertTrue(np.all(np.isfinite(x)))
+        np.testing.assert_allclose(x, [[1., 1., 0.]], atol=2e-5)
+        empty = admm_solve_batch(np.zeros((0, 3), np.int8),
+                                 np.zeros((2, 0), np.int8),
+                                 c_vec=np.array([1., -1., 0.]), device="cpu")
+        np.testing.assert_array_equal(empty.numpy(), [[0., 1., 0.]] * 2)
+
+    def test_batch_partition_does_not_change_solution(self):
+        h, _ = steane_code()
+        s = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 1]], np.int8)
+        batched = admm_solve_batch(h, s, device="cpu").numpy()
+        separate = np.concatenate([
+            admm_solve_batch(h, row[None, :], device="cpu").numpy() for row in s])
+        np.testing.assert_allclose(batched, separate, atol=1e-7)
+
+    def test_quadratic_weights_are_not_rescaled_independently(self):
+        # With g != 0 the original c and g define the same quadratic.
+        # Normalizing c alone would turn this minimizer .5 into .25.
+        h = np.array([[1, 1]], np.int8)
+        x = admm_solve_batch(h, np.array([[1]], np.int8),
+                             c_vec=np.array([-2., -2.]),
+                             g_vec=np.array([4., 4.]), device="cpu").numpy()
+        np.testing.assert_allclose(x, [[.5, .5]], atol=2e-5)
+
     def test_weighted_pushes_low_weight_column(self):
         h = np.array([[1, 1]], dtype=np.int8)
         s = np.array([[1]], dtype=np.int8)

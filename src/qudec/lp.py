@@ -117,7 +117,7 @@ def syndrome_distance(h, s):
 class LpOsdDecoder:
     """LP decoding with OSD post-processing for CSS codes.
 
-    Mirrors BpOsdDecoder so benchmark_iid and the sinter wiring apply
+    Mirrors BpOsdDecoder so benchmark_iid and the array decoding interface apply
     unchanged. osd_order: 0 for OSD-0, 1 for OSD-0 plus the combination
     sweep (OSD-CS).
     """
@@ -173,7 +173,7 @@ class LpOsdDecoder:
         return c_x[0], c_z[0]
 
     def decode_batch(self, shots):
-        """Decode in the sinter protocol.
+        """Predict observable flips from unpacked detector arrays.
 
         shots: (batch, m_z + m_x) syndromes, concatenated [sigma_x | sigma_z].
         Return (batch, 2k) predicted observable flips
