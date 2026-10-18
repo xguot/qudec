@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "settings": {
+    "144": {
+      "greedy": {
+        "admm": {
+          "alpha": 1.0,
+          "rho": 0.5
+        },
+        "admm-w": {
+          "alpha": 1.0,
+          "rho": 0.5
+        }
+      },
+      "lam60": {
+        "admm": {
+          "alpha": 1.0,
+          "rho": 0.5
+        },
+        "admm-w": {
+          "alpha": 1.0,
+          "rho": 0.5
+        }
+      }
+    },
+    "72": {
+      "greedy": {
+        "admm": {
+          "alpha": 1.8,
+          "rho": 2.0
+        },
+        "admm-w": {
+          "alpha": 1.8,
+          "rho": 2.0
+        }
+      },
+      "lam60": {
+        "admm": {
+          "alpha": 1.5,
+          "rho": 2.0
+        },
+        "admm-w": {
+          "alpha": 1.8,
+          "rho": 2.0
+        }
+      }
+    }
+  },
+  "source_sha256": "f72bdd972b68b07e92578b9e22dc99a9af6fdd4e845f234ec537a07490832a73",
+  "tuning_outputs": {
+    "tune_000.jsonl": "48e5ac12c5d0349d2f603885e1a5c4f63b84934c8144351c413759bc5b0bdebe",
+    "tune_001.jsonl": "62c04b3874a4bd2863fd3a68c4e1505828b1e19cdf522309cd65d6e286ef8b08",
+    "tune_002.jsonl": "a5b6f370734936bc745392872d3d7f49a3c2909385f90a22cd6d8fa0f8d61921",
+    "tune_003.jsonl": "958358ff00d45500ecda851a1e458c49dca519ff7fb6011e0ccac5393e02056e"
+  }
+}

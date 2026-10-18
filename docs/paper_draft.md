@@ -1,201 +1,217 @@
-# LP-family decoding under phenomenological noise for a bivariate bicycle code
+# LP-family decoding under phenomenological noise for bivariate bicycle codes
 
 ## Abstract
 
-DRAFT — CORRECTED RESULTS PENDING. We study whether optimization-based
-quantum LDPC decoders retain an advantage over BP+OSD under measurement
-noise. The implementation includes exact LP decoding at code capacity,
-batched parity-polytope ADMM variants, and phenomenological memory
-experiments on bivariate bicycle codes. An implementation audit found
-incorrect BP messages at tied reliabilities and a capped ADMM projection
-that could violate the intended relaxation. Both affected the historical
-comparisons reported below. The corrected benchmark also matches BP data
-and measurement priors, closes the experiment with a perfect terminal
-syndrome, and retains paired per-shot outcomes. Corrected high-statistics
-results are required before concluding that an advantage survives or
-disappears. The numerical tables in this draft are historical provenance,
-not validated evidence for a decoder ranking.
+We compare belief propagation with ordered statistics decoding (BP+OSD)
+against plain and LLR-weighted parity-polytope ADMM under phenomenological
+noise on [[72,12,6]] and [[144,12,12]] bivariate bicycle codes. Following
+implementation repairs, independent tuning and confirmation use matched
+channel priors, a perfect terminal syndrome, bounded decoding batches,
+and paired outcomes. Twelve confirmation cells contain 10,000 shots each.
+On the 72-qubit code at p = 0.020 with greedy OSD, weighted ADMM reduces
+failures from 339 to 294, with exact paired p = 0.00156071 and
+Holm-adjusted p = 0.0374571 across 24 primary tests. This is the only
+primary comparison below 0.05 after adjustment. A separate CS(60) cohort
+favors ADMM but does not independently replicate the greedy result.
+Larger-code differences remain unresolved at these shot counts, and the
+preliminary circuit sweep favors BP. The finding is limited to the tested
+phenomenological setting. This remains a draft pending bibliography
+verification and further replication.
 
-## 1. Introduction
+## 1. Scope
 
-Quantum LDPC codes promise fault tolerance with reduced qubit overhead
-compared to surface codes. Their practical adoption hinges on the
-classical decoder: belief propagation (BP) with ordered statistics
-decoding (OSD) post-processing is the incumbent [Roffe, Bravyi]. BP
-suffers on degenerate codes because short cycles create ambiguities
-[SymBreak, Gu-Soleimanifar].
+The project asks whether optimization-based quantum LDPC decoding can
+improve on BP+OSD once syndrome measurements are noisy. The implementation
+contains exact LP decoding at code capacity, batched ADMM variants,
+phenomenological memory experiments, and a preliminary Stim circuit.
+Numerical claims here are limited to corrected campaign **21501046**,
+completed on Rivanna on October 17, 2026.
 
-Optimization-based decoding is the alternative: the maximum-likelihood
-decoding problem relaxes to a linear program [Feldman; Li-Vontobel], and
-Gu and Soleimanifar show LP+OSD outperforms BP+OSD at code capacity for
-bivariate bicycle codes up to [[288,12,18]]. Their conclusion motivates evaluating the decoder under more realistic
-noise. This project investigates the phenomenological extension; the
-literature review and exact citation details remain to be verified before
-submission.
+The [report](results/21501046/report.json),
+[manifest](results/21501046/manifest.json),
+[frozen settings](results/21501046/selected.json), and
+[audit record](results/21501046/audit.json) provide counts, marginal
+intervals, paired tests, and provenance. Raw results and immutable source
+remain under `results/reruns/21501046/` outside Git. Historical comparisons
+were withdrawn after BP message, ADMM projection, measurement-prior, and
+circuit-pipeline defects were found. They remain in Git history and are
+excluded from the present analysis.
 
 ## 2. Methods
 
-### 2.1 Codes and noise
+### 2.1 Codes, noise, and scoring
 
-Bivariate bicycle codes [[72,12,6]] and [[144,12,12]] [Bravyi et al.
-2024]. Phenomenological noise over d = 6 rounds: each round applies
-i.i.d. depolarizing data errors (marginal rate 2p/3 per Pauli) and
-syndrome measurement flips at rate p. The detector syndrome is
-delta_t = h e_t xor m_t xor m_{t-1}, giving a block-bidiagonal
-time-expanded check matrix with d data blocks and d measurement blocks.
-The corrected protocol adds a noiseless terminal measurement, giving an
-extra detector block delta_(d+1) = m_d. The historical tables used an open
-terminal boundary and logical-only scoring. These protocols are distinct
-and their estimates must not be pooled.
+Both bivariate bicycle codes undergo six noisy rounds. Each round applies
+depolarizing data noise at rate p (marginal X/Z error rate 2p/3) and
+syndrome measurement flips at rate p. Detector syndromes obey
+`delta_t = h e_t xor m_t xor m_(t-1)`. A perfect terminal syndrome adds
+one detector block equal to the final measurement error (`closed-v1`).
+Historical open-boundary experiments are a different protocol and are not
+pooled with these data.
 
-### 2.2 Decoders
+Failure includes a logical flip, residual data syndrome, or invalid
+detector correction. All variants within a task decode identical samples.
+Non-circuit outputs retain per-shot logical, invalid, residual, and failure
+indicators, integer totals, sample fingerprints, parameters, environment,
+and source hashes. Decoder batches contain at most 32 shots.
 
-- **BP+OSD**: min-sum BP, 30 iterations, OSD with a one-pass combination
-  greedy sweep, or the explicitly selected exhaustive
-  OSD-CS(lambda) variant. Corrected BP uses per-column priors 2p/3 for data
-  and p for measurement errors.
-- **LP+OSD**: the exact LP relaxation (Eq. 2 of Gu-Soleimanifar),
-  solved with HiGHS, qubit indicators fed to OSD with Tanner-distance
-  tie breaking (their Sec. V). Code capacity only; the subset
-  formulation grows exponentially at detector scale.
-- **ADMM+OSD**: the parity-polytope relaxation (their QP (8) with g = 0,
-  c = 1), plain ADMM with rho = 2.0 (tuned runs use rho = 4.0, chosen
-  by the historical Section 3.2 sweep; the corrected solver needs fresh
-  tuning). The corrected projection uses a forbidden-set cut search [Gensheimer et al.] and
-  a scalar root solve to floating-point precision. It does not truncate
-  the available parity slices or fall back to box-only clipping.
-- **ADMM-w+OSD**: per-column LLR weights per their Appendix C (data
-  columns weighted by 2p/3, measurement columns by p), normalized by
-  the maximum absolute weight. Positive scaling preserves the LP optimum
-  and changes the relative objective/penalty scale in finite-iteration
-  ADMM. The historical claim that normalization is necessary for
-  convergence must be reassessed after the projection repair.
-- **LDR+OSD**: the adaptive-penalty variant of their companion ISIT
-  2026 paper, with a diminishing step beta/sqrt(k+1) and four outer
-  iterations, warm-started between inner solves.
+### 2.2 Decoders and selection
 
-All decoders share the same OSD post-processing and logical checks;
-corrections are validated against the detector syndromes, and runs with
-any invalid correction are flagged.
+BP uses tie-safe min-sum messages, 30 iterations, scaling alpha = 0.9,
+and matched priors 2p/3 for data and p for measurement columns. Plain ADMM
+uses a uniform linear objective; weighted ADMM uses channel LLRs normalized
+by their maximum absolute magnitude. Both use full parity-polytope
+projection with forbidden-set cut search and a scalar root solve. OSD
+post-processing is shared, with either the implemented greedy order-one
+combination sweep or OSD-CS(60).
 
-### 2.3 Benchmark protocol
+ADMM uses 150 iterations in the phenomenological benchmark. Two 300-shot
+training seeds per code (100000 and 100001) at p = 0.020 sweep
+rho in {0.5, 1, 2, 4, 8} and alpha in {1, 1.5, 1.8}.
+Plain and weighted settings are chosen separately under each OSD mode
+by minimum pooled training failures, breaking ties by lower rho then
+alpha. They are frozen before confirmation and used at all three rates:
 
-Historical runs used 300-shot explorations, 2000-shot confirmations,
-and selected 10000-shot four-seed cells. They reported no invalid final
-OSD corrections; this does not validate the preceding BP or ADMM steps.
+| Code | OSD | Plain rho / alpha | Weighted rho / alpha |
+| --- | --- | --- | --- |
+| 72 | greedy | 2 / 1.8 | 2 / 1.8 |
+| 72 | CS(60) | 2 / 1.5 | 2 / 1.8 |
+| 144 | greedy | 0.5 / 1 | 0.5 / 1 |
+| 144 | CS(60) | 0.5 / 1 | 0.5 / 1 |
 
-Corrected runs sample one error set for all variants and decode it in
-bounded batches. They save integer failure counts, per-shot failure and
-residual-syndrome indicators, a sample fingerprint, protocol version,
-solver parameters, environment, and source revision. Closed-memory
-failure includes logical flips, residual data syndrome, or invalid
-detector corrections. Paired McNemar comparisons use the same saved
-sample set; independent two-proportion statistics are descriptive only
-when outcomes are paired. Reruns must disclose tuning/selection and
-multiple comparisons. BP/OSD execute on CPU; ADMM can execute on CUDA.
+Exact LP with HiGHS is included only at code capacity. Exploratory LDR
+uses rho = 2, alpha = 1, four outer iterations, and a diminishing
+beta/sqrt(k+1) step with beta = 1; it does not inherit convex ADMM tuning.
 
-## 3. Historical results — require corrected reruns
+### 2.3 Confirmation and inference
 
-All in-tree decoder comparisons in this section predate the correctness
-repairs. Point estimates are retained for traceability; the earlier
-advantage/deficit and equivalence interpretations are withdrawn.
+Each code, p in {0.005, 0.010, 0.020}, and OSD mode receives four
+independent 2500-shot shards (seeds 0–3), for 10,000 shots per decoder.
+Training samples are excluded. Two-sided exact McNemar tests compare each
+ADMM family against paired BP outcomes. Holm adjustment covers all 24
+primary comparisons at familywise threshold 0.05. The report retains raw
+`mcnemar.p_value` and adjusted `holm_p_value` separately. Independent
+two-proportion statistics are descriptive only.
 
-### 3.1 Code capacity
+Marginal 95% intervals are exact binomial intervals without simultaneous
+coverage adjustment. The predeclared CS(60) replication uses seeds 4–7
+on the 72-qubit code at p = 0.020, separately from primary data.
+Replication and exploratory p-values are unadjusted.
 
-[[144,12,12]], 500 shots (bposd reference: 20000):
+### 2.4 Validation and execution
 
-- p=0.03: LP 0.000 · BP 0.002 · bposd 0.00135
-- p=0.05: LP 0.004 · BP 0.008 · bposd 0.00950
-- p=0.08: LP 0.096 · BP 0.088 · bposd 0.08475
-- p=0.10: LP 0.294 · BP 0.302 · bposd 0.23210
+The cluster gate passed 116 tests, circuit smoke validation, and a
+larger-code CUDA pilot. All 75 artifacts validated against their completion
+markers, frozen settings, sample pairing, and checksums. Independent
+reconstruction from raw outcomes reproduced aggregate counts and paired
+tests. Non-circuit records had zero invalid or residual flags.
 
-The external reference and in-tree point estimates used different shot
-counts. The in-tree BP baseline must be rerun before interpretation.
+BP, LP, and OSD ran on CPU; ADMM used CUDA on A40/RTX A6000 allocations.
+The environment included Python 3.10.21, PyTorch 2.5.1+cu121,
+NumPy 2.2.6, and SciPy 1.15.3. Timings are descriptive and do not establish
+a speedup against a matched-hardware baseline.
 
-### 3.2 Phenomenological noise
+## 3. Corrected results
 
-[[72,12,6]], d = 6, 300 shots (initial sweep):
+### 3.1 Primary phenomenological comparison
 
-- p=0.005: BP 0.00667 · ADMM 0.00333 · ADMM-w 0.00333 · LDR 0.00333
-- p=0.010: BP 0.03333 · ADMM 0.04333 · ADMM-w 0.02333 · LDR 0.03000
-- p=0.020: BP 0.10000 · ADMM 0.14667 · ADMM-w 0.10000 · LDR 0.13000
-- p=0.030: BP 0.26333 · ADMM 0.30333 · ADMM-w 0.28333 · LDR 0.32667
+All entries are failures out of 10,000 shots. Marginal intervals and
+both ADMM comparisons' exact tests are available in the report.
 
-[[72,12,6]], d = 6, 2000 shots (confirmation):
+| Code | p | OSD | BP | Plain ADMM | Weighted ADMM | Weighted Holm p |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| 72 | 0.005 | greedy | 4 | 3 | 4 | 1 |
+| 72 | 0.005 | CS(60) | 3 | 3 | 3 | 1 |
+| 72 | 0.010 | greedy | 35 | 26 | 26 | 1 |
+| 72 | 0.010 | CS(60) | 31 | 29 | 30 | 1 |
+| 72 | 0.020 | greedy | 339 | 323 | 294 | **0.037457** |
+| 72 | 0.020 | CS(60) | 321 | 310 | 294 | 0.975753 |
+| 144 | 0.005 | greedy | 0 | 0 | 0 | 1 |
+| 144 | 0.005 | CS(60) | 0 | 0 | 0 | 1 |
+| 144 | 0.010 | greedy | 1 | 0 | 0 | 1 |
+| 144 | 0.010 | CS(60) | 0 | 0 | 0 | 1 |
+| 144 | 0.020 | greedy | 19 | 7 | 6 | 0.165540 |
+| 144 | 0.020 | CS(60) | 6 | 3 | 3 | 1 |
 
-- p=0.005: BP 0.00300 · ADMM 0.00250 · ADMM-w 0.00350
-- p=0.010: BP 0.02000 · ADMM 0.02150 · ADMM-w 0.01800
-- p=0.020: BP 0.11800 · ADMM 0.13800 · ADMM-w 0.12450
+In the significant greedy 72-qubit cell, BP's rate is 0.0339
+(95% interval [0.0304393, 0.0376355]) and weighted ADMM's is 0.0294
+([0.0261768, 0.0329010]). The absolute reduction is 0.0045. There are
+120 BP-only and 75 weighted-only failures, giving exact paired
+p = 0.00156071 and Holm-adjusted p = 0.0374571. No other primary comparison
+survives adjustment. Zero failures in 10,000 shots give a 95% upper bound
+of 0.000368820, so larger-code low-rate cells remain limited by rare events.
+Nonsignificance does not establish equivalence.
 
-The earlier 3.9-sigma claim for 0.138 versus 0.118 at 2000 shots per
-decoder was incorrect under the stated independent two-proportion method:
-the pooled value is approximately 1.89 sigma. For 0.1245 versus 0.118 it
-is approximately 0.63 sigma, rather than 1.3. Because variants share
-sampled errors, valid paired inference requires discordant outcome counts
-that the old runs did not retain. These arithmetic corrections do not
-validate the historical decoder implementations.
+### 3.2 Separate CS(60) replication
 
-Complete fan-out at rho = 4, four independent 2500-shot seeds
-(10^4 shots per cell):
+On independent seeds 4–7, the 72-qubit p = 0.020 CS(60) cell has 310 BP,
+270 plain-ADMM, and 274 weighted-ADMM failures per 10,000 shots. Exact
+paired p-values are 0.00411824 and 0.00743387, respectively, without
+multiplicity adjustment. These data favor ADMM in that cohort, while the
+corresponding primary weighted comparison has Holm p = 0.975753.
+This cohort does not independently replicate the significant greedy
+comparison, and is not pooled with primary data.
 
-- p=0.020, greedy: BP 0.11700 · ADMM 0.12170 · ADMM-w 0.11000
-- p=0.020, OSD-CS(60): BP 0.11440 · ADMM 0.11040 · ADMM-w 0.10200
-- p=0.010, greedy: BP 0.02230 · ADMM 0.02220 · ADMM-w 0.02110
+### 3.3 Code capacity and exploration
 
-The weighted OSD-CS(60) point is 0.0124 below the historical BP estimate.
-A descriptive independent two-proportion calculation is about 2.8 sigma;
-it is neither a valid paired test nor evidence of an advantage after the
-implementation audit. The setting was selected among several explored
-variants. It should be rerun with the corrected protocol and independently
-replicated after settings are fixed.
+At code capacity on [[144,12,12]], failures per 500 shots are:
 
-### 3.3 Preliminary code-size data
+| p | BP | Exact LP | ADMM |
+| --- | ---: | ---: | ---: |
+| 0.005 | 0 | 0 | 0 |
+| 0.010 | 0 | 0 | 0 |
+| 0.020 | 0 | 0 | 0 |
+| 0.030 | 2 | 0 | 0 |
+| 0.050 | 7 | 2 | 2 |
+| 0.080 | 57 | 48 | 41 |
+| 0.100 | 159 | 147 | 147 |
 
-[[144,12,12]], d = 6, 300 shots:
+These are small baseline checks, separate from the primary family. The
+optional external-reference stack was not enabled. Eight 300-shot
+phenomenological exploration cells, including LDR, also completed;
+full results are in the report and provide no additional confirmatory claim.
 
-- p=0.005: BP 0.00667 · ADMM 0.01000 · ADMM-w 0.00333
-- p=0.010: BP 0.03333 · ADMM 0.05667 · ADMM-w 0.04333
+### 3.4 Preliminary circuit sweep
 
-These are exploratory point estimates. Their ordering differs between
-rates; corrected confirmation counts on this code are outstanding. A
-previous high-shot attempt exhausted memory before producing results.
+The 72-qubit three-round memory experiment uses DEM mechanism priors,
+300 shots per cell, and unweighted ADMM at rho = 2, alpha = 1,
+500 iterations. Counts are:
 
-### 3.4 The weighting normalization
+| Memory basis | p | BP failures | ADMM failures |
+| --- | --- | ---: | ---: |
+| Z | 0.001 | 1 | 7 |
+| Z | 0.002 | 10 | 50 |
+| X | 0.001 | 1 | 8 |
+| X | 0.002 | 11 | 41 |
 
-The pre-audit implementation produced poor behavior with unnormalized
-LLR weights. This observation cannot be separated from its projection
-and stopping defects. The corrected solver rescales a linear objective
-by a positive factor for conditioning; it preserves the LP optimum.
-When a quadratic LDR penalty is present, the linear term is not
-independently renormalized, which would change the intended objective.
-Convergence sensitivity and any normalization requirement need new tests
-at the reported benchmark settings.
+BP has fewer failures in every tested cell. Circuit CSVs retain marginal
+counts; the report adds exact binomial intervals. Per-shot paired outcomes
+were not saved. These preliminary
+settings were not tuned independently for the circuit and provide no
+evidence of a circuit-level ADMM advantage.
 
-## 4. Discussion
+## 4. Discussion and remaining work
 
-The scientific question remains open within this project. The historical
-comparisons do not establish a loss, retention, or recovery of an ADMM
-advantage because both the BP baseline and ADMM relaxation path had
-correctness defects. The corrected implementation has regression coverage
-against independent message and convex-projection oracles, but those
-checks are not a substitute for corrected high-statistics experiments.
+The corrected campaign supports one modest weighted-ADMM improvement under
+the specified phenomenological protocol. It does not establish a general
+advantage across code sizes, OSD choices, or circuit noise. The priority
+is independent replication of the fixed greedy 72-qubit p = 0.020
+comparison. Higher larger-code statistics, separate circuit tuning, and
+protocol-sensitivity experiments are further research, not missing tasks
+in this completed campaign.
 
-Next steps are a fresh matched-prior tuning/baseline run, independent
-confirmation of fixed settings, larger-code validation, and manuscript
-integration. Protocol sensitivity should compare closed and explicitly
-legacy open terminal boundaries without pooling their outcomes.
-Remaining limitations include finite ADMM iteration budgets, exploratory
-LDR settings, GPU nondeterminism, unequal CPU/GPU execution, and an
-optional preliminary circuit experiment. A nonsignificant comparison
-does not establish statistical equivalence.
+Finite iteration limits, small training samples, exploratory LDR choices,
+GPU variation, and unequal CPU/GPU execution remain limitations.
+A 100,000-shot campaign and fresh external-reference comparison were not
+performed. Completed tasks need no rerun for the report-label correction;
+raw samples, settings, and original source remain unchanged. Literature
+coverage and the bibliography must be verified before submission.
 
-## References
+## References to verify before submission
 
-[DRAFT: Bravyi et al. Nature 2024; Roffe et al. PRR 2020; Gu and
-Soleimanifar TIT 2026 and ISIT 2026; Barman et al. IEEE TIT 2013; Li and
-Vontobel ISIT 2018; SymBreak arXiv:2412.02885.]
-
-Projection reference: F. Gensheimer, T. Dietz, K. Kraft, S. Ruzika,
-and N. Wehn, “A Reduced-Complexity Projection Algorithm for ADMM-based
-LP Decoding,” arXiv:1901.03240 (2019), Section IV.
-[arXiv:1901.03240](https://arxiv.org/abs/1901.03240)
+This draft retains the previous reference placeholders; publication details,
+equation attribution, and current literature coverage are not yet checked:
+Bravyi et al. (bivariate bicycle codes); Roffe et al. (BP+OSD);
+Gu and Soleimanifar (LP/ADMM decoding); Barman et al. (ADMM LP decoding);
+Li and Vontobel (quantum LP decoding); SymBreak; Gensheimer et al.
+(parity-polytope projection, arXiv:1901.03240).

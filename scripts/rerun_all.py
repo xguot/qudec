@@ -551,11 +551,16 @@ def report(run_dir):
     for rank, (p, comparison) in enumerate(sorted(primary, key=lambda item: item[0])):
         running = max(running, min(1.0, (len(primary) - rank) * p))
         comparison["holm_p_value"] = running
+    for group in analyses.get("confirm", []):
+        group["p_values_multiple_testing_corrected"] = True
     result = {"complete": True, "source_sha256": manifest["source_sha256"],
               "selection_sha256": digest(run_dir / "selected.json"), "coverage": manifest["coverage"],
               "analyses": analyses, "circuit_preliminary": circuit,
               "rate_intervals": "95% exact binomial; not adjusted for multiple comparisons",
-              "primary_multiple_testing": {"method": "Holm", "comparisons": len(primary)},
+              "primary_multiple_testing": {
+                  "method": "Holm", "comparisons": len(primary),
+                  "raw_p_value_field": "mcnemar.p_value",
+                  "adjusted_p_value_field": "holm_p_value"},
               "replication": "separate independent cohort; not pooled into primary confirmation",
               "created_utc": datetime.now(timezone.utc).isoformat()}
     atomic_json(run_dir / "report.json", result)

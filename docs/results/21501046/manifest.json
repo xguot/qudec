@@ -1,0 +1,788 @@
+{
+  "config": {
+    "batch_size": 32,
+    "capacity_shots": 500,
+    "circuit_shots": 300,
+    "confirm_seeds": 4,
+    "confirm_shots": 2500,
+    "explore_shots": 300,
+    "include_circuit": true,
+    "include_reference": false,
+    "max_parallel": 4,
+    "task_time": "12:00:00",
+    "tune_shots": 300
+  },
+  "coverage": {
+    "confirmation_seeds": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "confirmation_shots_per_cell": 10000,
+    "reference": "historical external reference excluded",
+    "replication_seeds": [
+      4,
+      5,
+      6,
+      7
+    ],
+    "replication_shots": 10000,
+    "tasks_by_kind": {
+      "capacity": 7,
+      "circuit": 4,
+      "confirm": 48,
+      "explore": 8,
+      "replicate": 4
+    },
+    "tuning_seeds": [
+      100000,
+      100001
+    ],
+    "tuning_tasks": 4
+  },
+  "created_utc": "2026-10-17T15:43:03.147546+00:00",
+  "require_cuda": true,
+  "schema_version": 1,
+  "snapshot_sha256": "8d0211ef9acf7ebf3660d2ca46763daf36396b039c981a71ccbc179be83ffc0b",
+  "source_sha256": "f72bdd972b68b07e92578b9e22dc99a9af6fdd4e845f234ec537a07490832a73",
+  "tasks": [
+    {
+      "code": "144",
+      "id": 0,
+      "kind": "capacity",
+      "p": 0.005,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "144",
+      "id": 1,
+      "kind": "capacity",
+      "p": 0.01,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "144",
+      "id": 2,
+      "kind": "capacity",
+      "p": 0.02,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "144",
+      "id": 3,
+      "kind": "capacity",
+      "p": 0.03,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "144",
+      "id": 4,
+      "kind": "capacity",
+      "p": 0.05,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "144",
+      "id": 5,
+      "kind": "capacity",
+      "p": 0.08,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "144",
+      "id": 6,
+      "kind": "capacity",
+      "p": 0.1,
+      "rounds": 0,
+      "seed": 0,
+      "shots": 500
+    },
+    {
+      "code": "72",
+      "id": 7,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "72",
+      "id": 8,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "72",
+      "id": 9,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "72",
+      "id": 10,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.03,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "72",
+      "id": 11,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 12,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 13,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 14,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 15,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 16,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 17,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 18,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 19,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 20,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 21,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 22,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 23,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 24,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 25,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 26,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 27,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 28,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 29,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 30,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 31,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 32,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 33,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 34,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 35,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "144",
+      "id": 36,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "144",
+      "id": 37,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "144",
+      "id": 38,
+      "kind": "explore",
+      "mode": "greedy",
+      "p": 0.03,
+      "rounds": 6,
+      "seed": 200000,
+      "shots": 300
+    },
+    {
+      "code": "144",
+      "id": 39,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 40,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 41,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 42,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 43,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 44,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 45,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 46,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.005,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 47,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 48,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 49,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 50,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 51,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 52,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 53,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 54,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.01,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 55,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 56,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 57,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 58,
+      "kind": "confirm",
+      "mode": "greedy",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 59,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 0,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 60,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 1,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 61,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 2,
+      "shots": 2500
+    },
+    {
+      "code": "144",
+      "id": 62,
+      "kind": "confirm",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 3,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 63,
+      "kind": "replicate",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 4,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 64,
+      "kind": "replicate",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 5,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 65,
+      "kind": "replicate",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 6,
+      "shots": 2500
+    },
+    {
+      "code": "72",
+      "id": 66,
+      "kind": "replicate",
+      "mode": "lam60",
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 7,
+      "shots": 2500
+    },
+    {
+      "basis": "Z",
+      "code": "72",
+      "id": 67,
+      "kind": "circuit",
+      "p": 0.001,
+      "rounds": 3,
+      "seed": 300000,
+      "shots": 300
+    },
+    {
+      "basis": "Z",
+      "code": "72",
+      "id": 68,
+      "kind": "circuit",
+      "p": 0.002,
+      "rounds": 3,
+      "seed": 300000,
+      "shots": 300
+    },
+    {
+      "basis": "X",
+      "code": "72",
+      "id": 69,
+      "kind": "circuit",
+      "p": 0.001,
+      "rounds": 3,
+      "seed": 300000,
+      "shots": 300
+    },
+    {
+      "basis": "X",
+      "code": "72",
+      "id": 70,
+      "kind": "circuit",
+      "p": 0.002,
+      "rounds": 3,
+      "seed": 300000,
+      "shots": 300
+    }
+  ],
+  "tuning": [
+    {
+      "code": "72",
+      "id": 0,
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 100000,
+      "shots": 300
+    },
+    {
+      "code": "72",
+      "id": 1,
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 100001,
+      "shots": 300
+    },
+    {
+      "code": "144",
+      "id": 2,
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 100000,
+      "shots": 300
+    },
+    {
+      "code": "144",
+      "id": 3,
+      "p": 0.02,
+      "rounds": 6,
+      "seed": 100001,
+      "shots": 300
+    }
+  ]
+}

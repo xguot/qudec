@@ -33,19 +33,26 @@ Stim integration tests and smoke validation.
     pip install -e ".[circuit]"
     PYTHONPATH=src python3 -m unittest discover -s tests -v
 
-Reference sweep for paper parity (adds `ldpc` + `bposd`):
+Optional external-reference sweep (adds `ldpc` + `bposd`):
 
     pip install -e ".[reference]"
     python -u scripts/bench_gross_ref.py
 
 ## HPC (Rivanna)
 
-Sync from your local checkout:
+Campaign **21501046 completed all 75 tasks** on October 17, 2026.
+Its [audited report](docs/results/21501046/report.json) and
+[research summary](research_summary.md) contain the corrected results.
+There is no need to resubmit this campaign for the reporting and cleanup
+changes in the repository.
 
-    bash hpc/sync.sh push
+On Rivanna, update an existing Git checkout after the desired commits
+have been published to its remote:
 
-On Rivanna, enter the synced repository, run `bash hpc/setup.sh` once,
-then submit the complete corrected campaign with one command:
+    git pull --ff-only
+
+For a new campaign, run `bash hpc/setup.sh` once in that checkout, then
+submit with the single Slurm entry point:
 
     sbatch hpc/rerun_all.slurm
 
@@ -54,9 +61,8 @@ and submits dependent tuning, setting selection, benchmark workers,
 and a final report. Confirmation waits for successful tuning and uses
 independent seeds. Results, frozen settings, source provenance, and worker
 logs live under `results/reruns/<initial_job_id>/`. The default worker
-limit is four simultaneous jobs. Pull the campaign back with
-`bash hpc/sync.sh pull`. No corrected Slurm campaign has been submitted
-as part of preparing this workflow.
+limit is four simultaneous jobs. The optional
+`bash hpc/sync.sh pull` command retrieves results to the local checkout.
 
 The default campaign includes both codes at six phenomenological rounds,
 three error rates (0.005, 0.010, 0.020), and both greedy OSD and OSD-CS(60).
@@ -64,7 +70,10 @@ Each confirmation cell contains four independent 2500-shot shards,
 for 10,000 shots per decoder, with paired BP, plain ADMM, and weighted
 ADMM outcomes. Separate tasks cover a held-out replication, exploratory
 LDR comparisons, code-capacity checks, and a preliminary circuit sweep.
-See [the campaign plan](docs/plan.md) for the full scope.
+The completed run used these defaults: 10,000 shots per decoder in each
+of the 12 primary cells. The optional 100,000-shot escalation and
+external-reference comparison were not run. See
+[the campaign plan](docs/plan.md) for scope, outcomes, and follow-ups.
 
 Common overrides, set before `sbatch`:
 
@@ -89,11 +98,6 @@ and skipped; partial cells are replaced. `QUDEC_TASK_TIME` and
 `QUDEC_MAX_PARALLEL` may change for a retry, while samples, batch size,
 source, and decoder settings remain frozen.
 
-Sync push retires the eight replaced Slurm entry points by exact filename
-on the remote checkout and preserves results and logs. Use
-`bash hpc/sync.sh push --dry-run` to inspect the transfer and retirement
-plan without changing remote files.
-
 ## Quickstart
 
     import numpy as np
@@ -116,10 +120,18 @@ CPU. Timing comparisons must include the device and software environment.
 
 A correctness audit found tied-minimum BP messages, truncated ADMM
 projections, unmatched BP measurement priors, and circuit-pipeline bugs.
-These are repaired in the current implementation. **Previously recorded
-in-tree decoder comparisons require rerunning; they do not establish an
-ADMM advantage or deficit.** Historical numbers remain in
-research_summary.md and docs/paper_draft.md for provenance.
+These are repaired in the current implementation and were exercised by
+campaign 21501046. Its source snapshot, artifact hashes, paired outcomes,
+and complete task coverage were audited. Historical comparisons that
+predate the fixes are superseded by the
+[corrected results](research_summary.md).
+
+At [[72,12,6]], p = 0.020, with greedy OSD, weighted ADMM recorded
+294 failures versus BP's 339 in 10,000 paired shots; the primary
+24-comparison Holm-adjusted p value is 0.03746. No other primary
+comparison passed that correction. The separate held-out cohort uses
+OSD-CS(60), so it does not independently replicate the greedy result.
+The preliminary circuit sweep favors BP in all four tested cells.
 
 New phenomenological runs default to a perfect terminal syndrome after
 noisy rounds. The explicit legacy open boundary is a different protocol;
@@ -134,11 +146,11 @@ Circuit validation and a small benchmark:
     PYTHONPATH=src python scripts/smoke_circuit.py
     PYTHONPATH=src python scripts/bench_circuit.py 72 3 100 0.001 --basis Z
 
-Remaining research work: rerun the corrected baseline and tuning grid,
-replicate the promising historical setting with independent seeds,
-complete larger-code/high-statistics comparisons, and integrate the
-validated results and full bibliography into the manuscript. Circuit
-results remain preliminary and optional in the submission plan.
+Research follow-ups include an independent replication of the greedy
+[[72,12,6]], p = 0.020 result, optional higher-statistics [[144,12,12]]
+comparisons, and circuit-specific tuning. The bibliography still needs
+completion. These are separate from the completed default campaign;
+circuit results remain preliminary.
 
 `gen_data.py` at the repo root is a leftover from the earlier QPT
 exploration and is unrelated to the decoder work.

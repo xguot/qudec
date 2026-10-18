@@ -286,15 +286,29 @@ class TestCampaign(unittest.TestCase):
             campaign.report(root)
             report = campaign.read_json(root / "report.json")
             self.assertTrue(report["complete"])
-            self.assertEqual(report["primary_multiple_testing"]["comparisons"], 24)
+            self.assertEqual(report["primary_multiple_testing"], {
+                "method": "Holm", "comparisons": 24,
+                "raw_p_value_field": "mcnemar.p_value",
+                "adjusted_p_value_field": "holm_p_value"})
             self.assertEqual(report["analyses"]["confirm"][0]["variants"]["bp"]["shots"], 1)
             self.assertEqual(report["analyses"]["replicate"][0]["variants"]["bp"]["shots"], 4)
             low, high = report["analyses"]["replicate"][0]["variants"]["bp"]["confidence_interval_95"]
             self.assertEqual(low, 0.)
             self.assertGreater(high, .5)
             for group in report["analyses"]["confirm"]:
+                self.assertTrue(group["p_values_multiple_testing_corrected"])
                 for result in group["comparisons"].values():
+                    self.assertEqual(result["mcnemar"]["p_value"], 1.)
                     self.assertEqual(result["holm_p_value"], 1.)
+            for phase in ("capacity", "explore", "replicate"):
+                for group in report["analyses"][phase]:
+                    self.assertFalse(group["p_values_multiple_testing_corrected"])
+                    for result in group["comparisons"].values():
+                        self.assertNotIn("holm_p_value", result)
+            # Standalone analysis remains raw, even for confirmation records.
+            from scripts.analyze_phenom import analyze
+            task = next(t for t in manifest["tasks"] if t["kind"] == "confirm")
+            self.assertFalse(analyze(rows_for(task, manifest))[0]["p_values_multiple_testing_corrected"])
             first, _ = campaign.paths_for(root, manifest["tasks"][0])
             first.unlink()
             with self.assertRaisesRegex(ValueError, "incomplete"):

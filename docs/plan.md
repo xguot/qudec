@@ -1,10 +1,13 @@
-# Corrected rerun campaign
+# Corrected campaign: results and follow-ups
 
 The correctness audit found tied-minimum BP messages, truncated ADMM
 projections, unmatched BP measurement priors, and circuit-pipeline bugs.
-These are repaired, with regression tests. Historical decoder comparisons
-remain available for provenance; their advantage and deficit conclusions
-are withdrawn pending corrected runs.
+These are repaired, with regression tests. Campaign **21501046 completed
+all 75 tasks** on October 17, 2026. Its source snapshot, manifest,
+settings, artifact hashes, and paired outcomes passed the audit. The
+[tracked report](results/21501046/report.json) and
+[research summary](../research_summary.md) supersede the historical
+decoder comparisons.
 
 All new phenomenological runs use full parity projection, matched
 per-column BP priors, bounded decoder batches, and a perfect terminal
@@ -12,10 +15,23 @@ syndrome. Per-shot failures support paired inference. The historical
 open-boundary metric is a separate protocol and is excluded from this
 campaign.
 
-## One submission
+The run completed four tuning tasks and 71 benchmark tasks: seven code
+capacity, eight exploration, 48 confirmation, four held-out replication,
+and four preliminary circuit cells. Each of the 12 primary confirmation
+cells has 10,000 shots per decoder. Cluster validation passed 116 tests
+and the circuit smoke checks; non-circuit records have zero invalid
+corrections and residual data syndromes. No resubmission is needed for
+the current reporting and cleanup changes.
 
-From the local repository, run `bash hpc/sync.sh push`. On Rivanna, enter
-the synced repository and run `bash hpc/setup.sh` once. Submit:
+## One submission for a new campaign
+
+On Rivanna, update the Git checkout after the desired commits have been
+published to its remote:
+
+    git pull --ff-only
+
+Run `bash hpc/setup.sh` once in that checkout. To launch a new campaign,
+submit:
 
     sbatch hpc/rerun_all.slurm
 
@@ -24,9 +40,8 @@ snapshot and a campaign directory under
 `results/reruns/<initial_job_id>/`, with the manifest, frozen settings,
 outputs, provenance, and worker logs. The initial GPU job runs validation
 and a pilot before submitting dependent stages. A failed gate prevents
-the subsequent research stage from running. The workflow has been
-prepared locally; a corrected cluster campaign has not been submitted
-as part of this work.
+the subsequent research stage from running. Completed campaign 21501046
+used this workflow and its default scope below.
 
 ## Stages and default scope
 
@@ -64,16 +79,17 @@ as part of this work.
    and paired decoder comparisons. A nonsignificant difference does
    not establish equivalence.
 
-The external `ldpc`/`bposd` code-capacity comparison is optional and off
-by default. Enable it when a fresh external-reference column is needed;
-historical reference numbers must remain clearly labeled.
+The external `ldpc`/`bposd` code-capacity comparison is optional, off
+by default, and was not run in campaign 21501046. Enable it when a fresh
+external-reference column is needed.
 
 ## Configuration and recovery
 
 Set environment variables before submitting. The default
 `QUDEC_CONFIRM_SEEDS=4` and `QUDEC_CONFIRM_SHOTS=2500` give 10,000 shots
 per confirmation cell. Set `QUDEC_CONFIRM_SEEDS=40` for 100,000 shots
-per cell. This larger campaign is an explicit escalation in cost.
+per cell. The 100,000-shot escalation was not run in campaign 21501046
+and requires a separate decision about the additional compute cost.
 
 `QUDEC_BATCH_SIZE=32` bounds decoder memory. `QUDEC_MAX_PARALLEL=4`
 limits simultaneous benchmark workers. `QUDEC_TASK_TIME=12:00:00`
@@ -95,15 +111,29 @@ skipped and partial cells are replaced. Scheduling time and concurrency
 may be overridden on retry; statistical inputs and decoder settings are
 unchanged.
 
-Pull the results with `bash hpc/sync.sh pull`. Sync push retires the
-eight replaced Slurm files by exact filename on the remote checkout and
-preserves historical logs and campaign results. Its `--dry-run` option
-does not create or remove remote files.
+Optionally pull results to the local checkout with
+`bash hpc/sync.sh pull`. Code updates can use Git independently of
+result transfers. Keep completed campaign snapshots and raw artifacts
+unchanged so their provenance remains verifiable.
 
-## After the campaign
+## Findings and remaining research work
 
-Check the final report and any failed or missing tasks before updating
-research claims. Integrate corrected tables and their uncertainty into
-the manuscript, retain the replication distinction, and finish the
-bibliography. Historical tables are not corrected evidence merely
-because the implementation now passes its tests.
+Weighted ADMM improves on BP in the [[72,12,6]], p = 0.020, greedy-OSD
+primary cell: 294 versus 339 failures in 10,000 paired shots. Its exact
+paired p value is 0.001561 and its Holm-adjusted p value is 0.03746
+across the 24 primary comparisons. No other primary comparison passes
+that correction. Zero-failure cells provide upper bounds; a failure
+count of zero in 10,000 shots has a 95% upper rate bound of 0.00036882.
+
+The predeclared OSD-CS(60) held-out cohort records 274 weighted-ADMM
+failures versus BP's 310, with paired p = 0.007434. It remains separate
+from primary confirmation and does not replicate the greedy-OSD cell.
+The four preliminary circuit comparisons favor BP and require separate
+work before making circuit-performance claims.
+
+An independent replication of the greedy [[72,12,6]], p = 0.020 result
+is a useful next experiment. Higher-statistics [[144,12,12]] comparisons,
+circuit-specific tuning, and the external reference are optional
+follow-ups rather than missing tasks from this campaign. Finish the
+manuscript bibliography and retain the distinction between primary,
+held-out, and exploratory evidence in future reporting.
