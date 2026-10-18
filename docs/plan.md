@@ -137,3 +137,16 @@ circuit-specific tuning, and the external reference are optional
 follow-ups rather than missing tasks from this campaign. Finish the
 manuscript bibliography and retain the distinction between primary,
 held-out, and exploratory evidence in future reporting.
+
+## Retired files
+
+The old text-only capacity sweeps (`bench_gross.py`, `bench_lp_gross.py`)
+are replaced by `scripts/bench_capacity.py`. The unrelated root QPT
+generator is removed. Their source and the withdrawn numerical tables
+remain available in Git history. The optional reference wrapper remains
+because the current capacity runner imports it.
+
+Superseded standalone `results/tune_72.csv` and pre-correction logs were
+removed from the local checkout after the corrected results were committed.
+Campaign 21501046, its frozen source, all raw outputs, and its launcher
+logs are retained. `hpc/rerun_all.slurm` remains the only Slurm entry point.

@@ -151,6 +151,3 @@ Research follow-ups include an independent replication of the greedy
 comparisons, and circuit-specific tuning. The bibliography still needs
 completion. These are separate from the completed default campaign;
 circuit results remain preliminary.
-
-`gen_data.py` at the repo root is a leftover from the earlier QPT
-exploration and is unrelated to the decoder work.

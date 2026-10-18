@@ -4,8 +4,8 @@ Reproduce the published code-capacity logical error rate of the
 [[144, 12, 12]] bivariate bicycle code using Roffe's BP + OSD
 implementation (bposd), the decoder behind the paper's numbers.
 Error sampling and the logical-success check reuse the in-tree
-benchmark, so results are directly comparable to
-scripts/bench_gross.py.
+benchmark. Use scripts/bench_capacity.py for paired comparisons with the
+in-tree decoders and machine-readable per-shot results.
 
 Install the optional dependencies first:
 
