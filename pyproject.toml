@@ -5,9 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qudec"
 version = "0.1.0"
-description = "GPU-accelerated quantum error correction decoders"
+description = "GPU-accelerated quantum error correction decoders (BP+OSD, LP+OSD, and parity-polytope ADMM+OSD) in PyTorch"
 readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["quantum-error-correction", "qldpc", "bivariate-bicycle", "bp-osd", "admm", "linear-programming"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     "numpy",
     "scipy",

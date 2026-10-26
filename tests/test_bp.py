@@ -113,6 +113,17 @@ class TestChannelPriors(unittest.TestCase):
                                osd_order=0)
         np.testing.assert_allclose(dec.weights, channel_llrs([.01, .25], 2))
         np.testing.assert_array_equal(dec.decode_batch(np.array([[1]])), [[0]])
+        plain = AdmmOsdDemDecoder(h, l, probabilities=[.01, .25],
+                                  weighted=False, max_iter=50, osd_order=0)
+        self.assertFalse(plain.weighted)
+        self.assertIsNone(plain.weights)
+        ldr = AdmmOsdDemDecoder(h, l, probabilities=[.01, .25],
+                                weighted=True, ldr=True, ldr_outer=2,
+                                max_iter=50, osd_order=0)
+        self.assertTrue(ldr.ldr)
+        np.testing.assert_array_equal(ldr.decode_batch(np.array([[1]])), [[0]])
+        with self.assertRaisesRegex(ValueError, "probabilities"):
+            AdmmOsdDemDecoder(h, l, weighted=True)
 
     def test_empty_dem_and_batches(self):
         for cls in (BpOsdDemDecoder, AdmmOsdDemDecoder):

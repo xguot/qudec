@@ -4,6 +4,7 @@ import contextlib
 import csv
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ from qudec.circuit import (
     build_memory_circuit, dem_check_matrix, detector_count, sample_memory,
 )
 from qudec.codes import logicals, medium_code, steane_code
+from scripts import analyze_phenom
 
 try:
     import stim
@@ -115,12 +117,15 @@ class TestCircuitBenchmark(unittest.TestCase):
     def test_options_do_not_become_probabilities(self):
         args = bench.parse_args([
             "bench", "72", "3", "10", "0.01", "0.02", "--basis", "X",
-            "--variants", "admm", "--seed", "9", "--osd-lam", "60",
-            "--batch-size", "2"])
+            "--variants", "admm,admm-u,admm-w,admm-ldr", "--seed", "9",
+            "--osd-lam", "60", "--batch-size", "2", "--rhos", "0.5,2.0",
+            "--alphas", "1.0,1.5"])
         self.assertEqual(args.ps, [0.01, 0.02])
         self.assertEqual(args.basis, "X")
-        self.assertEqual(args.variants, ["admm"])
+        self.assertEqual(args.variants, ["admm", "admm-u", "admm-w", "admm-ldr"])
         self.assertEqual((args.seed, args.osd_lam, args.batch_size), (9, 60, 2))
+        self.assertEqual(args.rhos, [0.5, 2.0])
+        self.assertEqual(args.alphas, [1.0, 1.5])
 
     def test_invalid_arguments_rejected(self):
         for argv in [
@@ -129,7 +134,9 @@ class TestCircuitBenchmark(unittest.TestCase):
                 ["bench", "72", "2", "0", ".01"],
                 ["bench", "72", "2", "10", "nan"],
                 ["bench", "72", "2", "10", ".01", "--variants", "typo"],
-                ["bench", "72", "2", "10", ".01", "--batch-size", "0"]]:
+                ["bench", "72", "2", "10", ".01", "--batch-size", "0"],
+                ["bench", "72", "2", "10", ".01", "--rhos", "1,1"],
+                ["bench", "72", "2", "10", ".01", "--alphas", "2.0"]]:
             with self.subTest(argv=argv), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     bench.parse_args(argv)
@@ -148,6 +155,11 @@ class TestCircuitBenchmark(unittest.TestCase):
         obs[5, 1] = True  # One block failure even when both logicals flip.
         self.assertEqual(bench.decode_failures(Decoder(), dets, obs, 4), 3)
         self.assertEqual(batches, [4, 4, 1])
+        failures, outcomes = bench.decode_failures(
+            Decoder(), dets, obs, 4, return_outcomes=True)
+        self.assertEqual(failures, 3)
+        np.testing.assert_array_equal(
+            outcomes, [True, False, False, False, False, True, False, False, True])
 
     @unittest.skipIf(stim is None, "requires optional stim dependency")
     def test_csv_records_actual_solver_settings_and_dem_priors(self):
@@ -189,6 +201,29 @@ class TestCircuitBenchmark(unittest.TestCase):
             self.assertEqual((rows[1]["max_iter"], rows[1]["alpha"], rows[1]["rho"]),
                              ("4", "1.2", "1.3"))
             self.assertTrue(all(np.all(s["probabilities"] > 0) for s in settings))
+
+    @unittest.skipIf(stim is None, "requires optional stim dependency")
+    def test_jsonl_records_paired_outcomes_and_tuning_grid(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(bench, "medium_code", steane_code), \
+                contextlib.redirect_stdout(io.StringIO()):
+            output = Path(tmp) / "circuit.jsonl"
+            bench.main(["bench", "72", "2", "4", ".01", "--basis", "Z",
+                        "--variants", "bp,admm-u,admm-w", "--rhos", "1.0,2.0",
+                        "--alphas", "1.0", "--bp-max-iter", "3",
+                        "--admm-max-iter", "5", "--seed", "7",
+                        "--batch-size", "2", "--output", str(output)])
+            records = [json.loads(line) for line in output.read_text().splitlines()]
+        self.assertEqual([r["variant"] for r in records],
+                         ["bp", "admm-u-r1-a1", "admm-u-r2-a1",
+                          "admm-w-r1-a1", "admm-w-r2-a1"])
+        self.assertEqual(len({r["sample_id"] for r in records}), 1)
+        self.assertEqual(records[1]["prior"], "uniform")
+        self.assertNotIn("weights", records[1]["decoder_config"])
+        self.assertEqual(records[3]["prior"], "dem")
+        self.assertEqual(records[3]["decoder_config"]["weights"], "normalized-dem-llr")
+        summary = analyze_phenom.analyze(records)[0]
+        self.assertIn("mcnemar", summary["comparisons"]["admm-w-r2-a1"])
 
 
 if __name__ == "__main__":

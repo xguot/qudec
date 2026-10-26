@@ -1,12 +1,13 @@
-"""Batched ADMM decoding following Gu and Soleimanifar, ISIT 2026.
+"""Batched ADMM decoding following Lyu and He, ISIT 2026, and Gu and Soleimanifar, IEEE TIT 2026.
 
-Plain ADMM solves the parity-polytope relaxation (their QP (8) with g = 0
-and c = 1): per check, the neighborhood indicator z_j is projected onto the
-parity polytope of the syndrome bit, and the qubit indicators minimize a
-separable quadratic. The relaxation equals the exact LP (2) of the TIT
-paper, so this solver replaces HiGHS where the subset formulation is too
-large, such as detector error models. OSD post-processing reuses the LP
-decoder's ordering, with decreasing error indicators and Tanner-distance
+Plain ADMM solves the parity-polytope relaxation (Lyu and He, ISIT 2026, QP (8)
+with g = 0 and c = 1): per check, the neighborhood indicator z_j is projected
+onto the parity polytope of the syndrome bit, and the qubit indicators minimize a
+separable quadratic (9) via over-relaxed updates (6a)-(6d). For CSS codes this
+relaxation equals the subset LP (2) of Gu and Soleimanifar (IEEE TIT 2026), and
+weighted ADMM uses normalized channel log-likelihood ratios c_i = log((1 - p_i) / p_i)
+(their Appendix C). OSD post-processing reuses the LP+OSD ordering (their Sec. IV,
+Algorithm 1), ranking columns by decreasing error indicators with Tanner-distance
 tie breaking.
 """
 

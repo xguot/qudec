@@ -63,7 +63,8 @@ class AdmmOsdDemDecoder:
     """Parity-polytope ADMM with OSD post-processing on a dem matrix."""
 
     def __init__(self, h, l, rho=2.0, alpha=1.0, max_iter=500,
-                 max_r=None, osd_order=1, osd_lam=None, probabilities=None):
+                 max_r=None, osd_order=1, osd_lam=None, probabilities=None,
+                 weighted=None, ldr=False, ldr_outer=4, ldr_beta=1.0):
         self.h = h.astype(np.int8)
         self.l = l.astype(np.int8)
         self.rho = rho
@@ -72,22 +73,36 @@ class AdmmOsdDemDecoder:
         self.max_r = max_r
         self.osd_order = osd_order
         self.osd_lam = osd_lam
+        self.ldr = bool(ldr)
+        self.ldr_outer = int(ldr_outer)
+        self.ldr_beta = float(ldr_beta)
         self.probabilities = (None if probabilities is None else
                               probability_vector(probabilities, self.h.shape[1]))
-        self.weights = (None if self.probabilities is None else
-                        channel_llrs(self.probabilities, self.h.shape[1]))
+        if weighted is True and self.probabilities is None:
+            raise ValueError("weighted DEM ADMM requires mechanism probabilities")
+        use_weights = (self.probabilities is not None
+                       if weighted is None else bool(weighted))
+        self.weighted = use_weights
+        self.weights = (channel_llrs(self.probabilities, self.h.shape[1])
+                        if use_weights else None)
 
     def decode_batch(self, shots):
         """Decode detector shots (batch, m); return obs flips (batch, k)."""
-        from qudec.admm import admm_solve_batch
+        from qudec.admm import admm_ldr_solve, admm_solve_batch
         from qudec.lp import syndrome_distance
 
         s = _detector_shots(shots, self.h)
         if s.shape[0] == 0 or self.h.shape[1] == 0:
             return np.zeros((s.shape[0], self.l.shape[0]), dtype=np.uint8)
-        x = admm_solve_batch(self.h, s, rho=self.rho, alpha=self.alpha,
-                             max_iter=self.max_iter,
-                             max_r=self.max_r, c_vec=self.weights).cpu().numpy()
+        if self.ldr:
+            x = admm_ldr_solve(self.h, s, rho=self.rho, alpha=self.alpha,
+                               max_iter=self.max_iter, max_r=self.max_r,
+                               outer=self.ldr_outer, beta=self.ldr_beta,
+                               c_vec=self.weights).cpu().numpy()
+        else:
+            x = admm_solve_batch(self.h, s, rho=self.rho, alpha=self.alpha,
+                                 max_iter=self.max_iter, max_r=self.max_r,
+                                 c_vec=self.weights).cpu().numpy()
         obs = []
         for i in range(s.shape[0]):
             dist = syndrome_distance(self.h, s[i])

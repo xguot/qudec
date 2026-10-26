@@ -88,8 +88,10 @@ class TestCampaign(unittest.TestCase):
     def test_default_complete_scope_and_independent_cohorts(self):
         plan = campaign.make_plan(campaign.config_from_env({}))
         self.assertEqual(len(plan["tuning"]), 4)
-        self.assertEqual(len(plan["tasks"]), 71)
+        self.assertEqual(len(plan["tasks"]), 75)
         self.assertEqual(plan["coverage"]["confirmation_shots_per_cell"], 10000)
+        self.assertEqual(plan["coverage"]["replication_modes"], ["greedy", "lam60"])
+        self.assertEqual(plan["coverage"]["replication_shots_per_cell"], 10000)
         confirmation = [t for t in plan["tasks"] if t["kind"] == "confirm"]
         for code in campaign.CODES:
             for rate in campaign.RATES:
@@ -97,18 +99,40 @@ class TestCampaign(unittest.TestCase):
                     cells = [t for t in confirmation if (t["code"], t["p"], t["mode"]) == (code, rate, mode)]
                     self.assertEqual({t["seed"] for t in cells}, {0, 1, 2, 3})
                     self.assertEqual(sum(t["shots"] for t in cells), 10000)
+        replication = [t for t in plan["tasks"] if t["kind"] == "replicate"]
+        self.assertEqual(len(replication), 8)
+        for mode in ("greedy", "lam60"):
+            rep_cells = [t for t in replication if t["mode"] == mode]
+            self.assertEqual({t["seed"] for t in rep_cells}, {4, 5, 6, 7})
+            self.assertEqual(sum(t["shots"] for t in rep_cells), 10000)
         self.assertTrue(set(plan["coverage"]["tuning_seeds"]).isdisjoint(
             plan["coverage"]["confirmation_seeds"] + plan["coverage"]["replication_seeds"]))
         self.assertEqual(plan["coverage"]["replication_seeds"], [4, 5, 6, 7])
+        # Legacy single-mode replication remains configurable via QUDEC_REPLICATE_MODES.
+        legacy = campaign.make_plan(campaign.config_from_env({"QUDEC_REPLICATE_MODES": "lam60"}))
+        self.assertEqual(len(legacy["tasks"]), 71)
 
-    def test_overrides_and_invalid_namespaces(self):
+    def test_overrides_presets_and_invalid_namespaces(self):
         plan = campaign.make_plan(campaign.config_from_env({"QUDEC_CONFIRM_SEEDS": "40",
                                                            "QUDEC_INCLUDE_CIRCUIT": "0"}))
         self.assertEqual(plan["coverage"]["confirmation_shots_per_cell"], 100000)
         self.assertEqual(plan["coverage"]["replication_seeds"], [40, 41, 42, 43])
         self.assertNotIn("circuit", plan["coverage"]["tasks_by_kind"])
+        high_stat = campaign.make_plan(campaign.config_from_env(preset="100k"))
+        self.assertEqual(high_stat["coverage"]["preset"], "high_stat")
+        self.assertEqual(high_stat["coverage"]["confirmation_shots_per_cell"], 100000)
+        self.assertEqual(high_stat["coverage"]["replication_shots_per_cell"], 100000)
+        self.assertEqual(high_stat["coverage"]["replication_seeds"], list(range(40, 80)))
+        self.assertTrue(high_stat["config"]["include_reference"])
+        self.assertEqual(high_stat["config"]["task_time"], "24:00:00")
+        self.assertEqual(high_stat["config"]["max_parallel"], 8)
+        followup = campaign.make_plan(campaign.config_from_env({"QUDEC_PRESET": "followup"}))
+        self.assertEqual(followup["coverage"]["confirmation_shots_per_cell"], 25000)
+        self.assertEqual(followup["coverage"]["replication_shots_per_cell"], 10000)
         for env in ({"QUDEC_CONFIRM_SEEDS": "99997"}, {"QUDEC_BATCH_SIZE": "0"},
-                    {"QUDEC_INCLUDE_REFERENCE": "yes"}, {"QUDEC_TASK_TIME": "bad"}):
+                    {"QUDEC_INCLUDE_REFERENCE": "yes"}, {"QUDEC_TASK_TIME": "bad"},
+                    {"QUDEC_PRESET": "unknown"}, {"QUDEC_REPLICATE_MODES": "bad"},
+                    {"QUDEC_REPLICATE_MODES": "greedy,greedy"}):
             with self.subTest(env=env), self.assertRaises(ValueError):
                 campaign.config_from_env(env)
 
@@ -291,7 +315,10 @@ class TestCampaign(unittest.TestCase):
                 "raw_p_value_field": "mcnemar.p_value",
                 "adjusted_p_value_field": "holm_p_value"})
             self.assertEqual(report["analyses"]["confirm"][0]["variants"]["bp"]["shots"], 1)
-            self.assertEqual(report["analyses"]["replicate"][0]["variants"]["bp"]["shots"], 4)
+            self.assertEqual(len(report["analyses"]["replicate"]), 2)
+            self.assertEqual({g["osd_lam"] for g in report["analyses"]["replicate"]}, {None, 60})
+            for group in report["analyses"]["replicate"]:
+                self.assertEqual(group["variants"]["bp"]["shots"], 4)
             low, high = report["analyses"]["replicate"][0]["variants"]["bp"]["confidence_interval_95"]
             self.assertEqual(low, 0.)
             self.assertGreater(high, .5)

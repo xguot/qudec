@@ -1,8 +1,13 @@
 """Plan, checkpoint, and dispatch the single-SLURM corrected rerun campaign.
 
-Local preview: python scripts/rerun_all.py plan
-Cluster entry: sbatch hpc/rerun_all.slurm
-Resume: sbatch hpc/rerun_all.slurm resume /absolute/path/to/campaign
+Local preview:
+  python scripts/rerun_all.py plan
+  python scripts/rerun_all.py plan --preset high_stat
+
+Cluster entry:
+  sbatch hpc/rerun_all.slurm
+  sbatch hpc/rerun_all.slurm high_stat
+  sbatch hpc/rerun_all.slurm resume /absolute/path/to/campaign
 """
 
 import argparse
@@ -27,6 +32,56 @@ CODES = ["72", "144"]
 RATES = [0.005, 0.01, 0.02]
 RHOS = [0.5, 1.0, 2.0, 4.0, 8.0]
 ALPHAS = [1.0, 1.5, 1.8]
+REPLICATE_MODES = ("greedy", "lam60")
+
+PRESETS = {
+    "default": {
+        "confirm_seeds": 4,
+        "confirm_shots": 2500,
+        "replicate_seeds": 4,
+        "replicate_modes": "greedy,lam60",
+        "tune_shots": 300,
+        "batch_size": 32,
+        "max_parallel": 4,
+        "capacity_shots": 500,
+        "explore_shots": 300,
+        "circuit_shots": 300,
+        "include_circuit": "1",
+        "include_reference": "0",
+        "task_time": "12:00:00",
+    },
+    "high_stat": {
+        "confirm_seeds": 40,
+        "confirm_shots": 2500,
+        "replicate_seeds": 40,
+        "replicate_modes": "greedy,lam60",
+        "tune_shots": 1000,
+        "batch_size": 32,
+        "max_parallel": 8,
+        "capacity_shots": 2500,
+        "explore_shots": 1000,
+        "circuit_shots": 2500,
+        "include_circuit": "1",
+        "include_reference": "1",
+        "task_time": "24:00:00",
+    },
+    "followup": {
+        "confirm_seeds": 10,
+        "confirm_shots": 2500,
+        "replicate_seeds": 4,
+        "replicate_modes": "greedy,lam60",
+        "tune_shots": 500,
+        "batch_size": 32,
+        "max_parallel": 8,
+        "capacity_shots": 1000,
+        "explore_shots": 500,
+        "circuit_shots": 1000,
+        "include_circuit": "1",
+        "include_reference": "1",
+        "task_time": "16:00:00",
+    },
+}
+PRESET_ALIASES = {"100k": "high_stat", "high-stat": "high_stat"}
 
 
 def atomic_json(path, value):
@@ -59,24 +114,49 @@ def source_hash(root, entire=False):
     return value.hexdigest()
 
 
-def config_from_env(env=None):
+def normalize_preset(name):
+    if not name:
+        return "default"
+    canonical = PRESET_ALIASES.get(name, name)
+    if canonical not in PRESETS:
+        raise ValueError(f"QUDEC_PRESET must be one of {sorted(PRESETS)} (or 100k)")
+    return canonical
+
+
+def parse_replicate_modes(raw):
+    if isinstance(raw, (list, tuple)):
+        modes = [str(m) for m in raw]
+    else:
+        modes = [m for m in str(raw).split(",") if m]
+    if not modes or any(m not in REPLICATE_MODES for m in modes):
+        raise ValueError("QUDEC_REPLICATE_MODES must choose from greedy,lam60")
+    if len(modes) != len(set(modes)):
+        raise ValueError("QUDEC_REPLICATE_MODES must not repeat modes")
+    return modes
+
+
+def config_from_env(env=None, preset=None):
     env = os.environ if env is None else env
-    fields = {"confirm_seeds": 4, "confirm_shots": 2500, "tune_shots": 300,
-              "batch_size": 32, "max_parallel": 4, "capacity_shots": 500,
-              "explore_shots": 300, "circuit_shots": 300}
-    config = {}
-    for key, default in fields.items():
-        config[key] = int(env.get("QUDEC_" + key.upper(), default))
+    chosen_preset = normalize_preset(preset or env.get("QUDEC_PRESET", "default"))
+    defaults = PRESETS[chosen_preset]
+    int_fields = ("confirm_seeds", "confirm_shots", "replicate_seeds", "tune_shots",
+                  "batch_size", "max_parallel", "capacity_shots", "explore_shots",
+                  "circuit_shots")
+    config = {"preset": chosen_preset}
+    for key in int_fields:
+        config[key] = int(env.get("QUDEC_" + key.upper(), defaults[key]))
         if config[key] < 1:
             raise ValueError(f"QUDEC_{key.upper()} must be positive")
-    if config["confirm_seeds"] + 3 >= 100000:
-        raise ValueError("confirmation seeds must stay below the tuning seed namespace")
-    for key, default in (("include_circuit", "1"), ("include_reference", "0")):
-        value = env.get("QUDEC_" + key.upper(), default)
+    if config["confirm_seeds"] + config["replicate_seeds"] - 1 >= 100000:
+        raise ValueError("confirmation and replication seeds must stay below the tuning seed namespace")
+    config["replicate_modes"] = parse_replicate_modes(
+        env.get("QUDEC_REPLICATE_MODES", defaults["replicate_modes"]))
+    for key in ("include_circuit", "include_reference"):
+        value = env.get("QUDEC_" + key.upper(), defaults[key])
         if value not in ("0", "1"):
             raise ValueError(f"QUDEC_{key.upper()} must be 0 or 1")
         config[key] = value == "1"
-    config["task_time"] = env.get("QUDEC_TASK_TIME", "12:00:00")
+    config["task_time"] = env.get("QUDEC_TASK_TIME", defaults["task_time"])
     if not re.fullmatch(r"(?:[0-9]+-)?[0-9]+:[0-5][0-9]:[0-5][0-9]", config["task_time"]):
         raise ValueError("QUDEC_TASK_TIME must be [days-]hours:minutes:seconds")
     return config
@@ -102,22 +182,29 @@ def make_plan(config):
                 for seed in range(config["confirm_seeds"]):
                     add("confirm", code=code, p=p, seed=seed,
                         shots=config["confirm_shots"], rounds=6, mode=mode)
-    for seed in range(config["confirm_seeds"], config["confirm_seeds"] + 4):
-        add("replicate", code="72", p=.02, seed=seed,
-            shots=config["confirm_shots"], rounds=6, mode="lam60")
+    rep_seeds = config.get("replicate_seeds", 4)
+    rep_modes = parse_replicate_modes(config.get("replicate_modes", ["greedy", "lam60"]))
+    for mode in rep_modes:
+        for seed in range(config["confirm_seeds"], config["confirm_seeds"] + rep_seeds):
+            add("replicate", code="72", p=.02, seed=seed,
+                shots=config["confirm_shots"], rounds=6, mode=mode)
     if config["include_circuit"]:
         for basis in ("Z", "X"):
             for p in (.001, .002):
                 add("circuit", code="72", p=p, seed=300000,
                     shots=config["circuit_shots"], rounds=3, basis=basis)
     return {"schema_version": 1, "config": config, "tuning": tuning, "tasks": tasks,
-            "coverage": {"tasks_by_kind": dict(Counter(t["kind"] for t in tasks)),
+            "coverage": {"preset": config.get("preset", "default"),
+                         "tasks_by_kind": dict(Counter(t["kind"] for t in tasks)),
                          "tuning_tasks": len(tuning),
                          "confirmation_shots_per_cell": config["confirm_seeds"] * config["confirm_shots"],
-                         "replication_shots": 4 * config["confirm_shots"],
+                         "replication_modes": list(rep_modes),
+                         "replication_shots": rep_seeds * config["confirm_shots"],
+                         "replication_shots_per_cell": rep_seeds * config["confirm_shots"],
                          "tuning_seeds": [100000, 100001],
                          "confirmation_seeds": list(range(config["confirm_seeds"])),
-                         "replication_seeds": list(range(config["confirm_seeds"], config["confirm_seeds"] + 4)),
+                         "replication_seeds": list(range(config["confirm_seeds"],
+                                                         config["confirm_seeds"] + rep_seeds)),
                          "reference": "fresh paired capacity reference" if config["include_reference"]
                          else "historical external reference excluded"}}
 
@@ -479,7 +566,7 @@ def preflight(run_dir):
         raise ValueError("larger-code pilot failed correction checks")
 
 
-def launch(run_dir=None, resume=False):
+def launch(run_dir=None, resume=False, preset=None):
     if resume:
         run_dir, manifest, _ = load_campaign(run_dir)
     else:
@@ -499,7 +586,7 @@ def launch(run_dir=None, resume=False):
             shutil.copy2(ROOT / name, source / name)
         for directory in ("artifacts", "logs"):
             (run_dir / directory).mkdir()
-        manifest = make_plan(config_from_env())
+        manifest = make_plan(config_from_env(preset=preset))
         manifest.update(source_sha256=source_hash(source), snapshot_sha256=source_hash(source, entire=True),
                         created_utc=datetime.now(timezone.utc).isoformat())
         manifest["require_cuda"] = True
@@ -572,14 +659,15 @@ def main(argv=None):
     parser.add_argument("stage", choices=("plan", "launch", "resume", "validate", "tune", "select", "work", "report"))
     parser.add_argument("run_dir", nargs="?", type=Path)
     parser.add_argument("--index", type=int)
+    parser.add_argument("--preset", help="campaign preset: default, high_stat (or 100k), followup")
     args = parser.parse_args(argv)
     try:
         if args.stage == "plan":
-            print(json.dumps(make_plan(config_from_env()), indent=2))
+            print(json.dumps(make_plan(config_from_env(preset=args.preset)), indent=2))
         elif args.stage in ("launch", "resume"):
             if args.stage == "resume" and args.run_dir is None:
                 raise ValueError("resume requires the absolute campaign path")
-            launch(args.run_dir, resume=args.stage == "resume")
+            launch(args.run_dir, resume=args.stage == "resume", preset=args.preset)
         else:
             if args.run_dir is None:
                 raise ValueError("stage requires a campaign path")

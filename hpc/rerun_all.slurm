@@ -1,9 +1,13 @@
 #!/bin/bash
-# One submission for the corrected campaign. Run from the synced repo root:
-#   sbatch hpc/rerun_all.slurm
-#   sbatch hpc/rerun_all.slurm resume /absolute/path/to/results/reruns/<job-id>
-# The launcher validates CUDA/tests, freezes source, and submits dependent
-# tuning/selection/array/report jobs using this same file, then exits.
+# Single Slurm entry point for qudec campaigns. Run from the synced repo root:
+#   sbatch hpc/rerun_all.slurm                          # default 10k-shot campaign (with greedy + CS(60) replication)
+#   sbatch hpc/rerun_all.slurm high_stat                # 100k-shot high-statistics confirmation + replication + reference
+#   sbatch hpc/rerun_all.slurm followup                 # 25k-shot confirmation + 10k-shot greedy/CS(60) replication
+#   sbatch hpc/rerun_all.slurm resume /abs/path/to/run  # resume an existing campaign
+#
+# Environment overrides (e.g. QUDEC_CONFIRM_SEEDS=40, QUDEC_MAX_PARALLEL=8)
+# take precedence over preset defaults. The launcher validates CUDA/tests,
+# freezes a source snapshot, and submits dependent tune/select/work/report jobs.
 #SBATCH --job-name=qudec_rerun
 #SBATCH --output=hpc/logs/qudec_rerun_%j.out
 #SBATCH --error=hpc/logs/qudec_rerun_%j.err
@@ -18,6 +22,10 @@
 set -euo pipefail
 STAGE="${1:-launch}"
 CAMPAIGN="${2:-}"
+if [[ "${STAGE}" == "high_stat" || "${STAGE}" == "high-stat" || "${STAGE}" == "100k" || "${STAGE}" == "followup" || "${STAGE}" == "default" ]]; then
+    export QUDEC_PRESET="${STAGE}"
+    STAGE="launch"
+fi
 ROOT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 if [[ -n "${CAMPAIGN}" && -d "${CAMPAIGN}/source" ]]; then
     CAMPAIGN="$(cd "${CAMPAIGN}" && pwd)"

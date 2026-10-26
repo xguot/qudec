@@ -119,7 +119,7 @@ not add confirmatory evidence. LDR used fixed rho = 2, alpha = 1 and four
 outer iterations rather than inheriting convex ADMM tuning.
 
 The preliminary [[72,12,6]] circuit sweep uses three rounds, 300 shots
-per cell, unweighted ADMM at rho = 2 / alpha = 1, and DEM mechanism priors:
+per cell, untuned ADMM at rho = 2 / alpha = 1, and DEM mechanism priors:
 
 | Memory basis | p | BP failures | ADMM failures |
 | --- | --- | ---: | ---: |
@@ -129,26 +129,38 @@ per cell, unweighted ADMM at rho = 2 / alpha = 1, and DEM mechanism priors:
 | X | 0.002 | 11 | 41 |
 
 Circuit CSVs retain marginal counts; the report adds exact binomial
-intervals. Per-shot paired outcomes were not saved for a paired significance
-test. These results provide no evidence of a
-circuit-level ADMM advantage at the tested settings.
+intervals. Per-shot paired outcomes were not saved in campaign 21501046.
+These results provide no evidence of a circuit-level ADMM advantage at
+the tested settings.
 
 ## Limitations and next work
 
-The completed default campaign needs no resubmission for these reporting
-edits. Further research should independently replicate the greedy
-72-qubit p = 0.020 setting with frozen parameters, increase larger-code
-statistics where rare failures limit inference, and tune circuit settings
-on separate training samples before another circuit comparison.
-A 100,000-shot confirmation and external reference are optional follow-ups,
-not completed stages.
+The completed baseline campaign (21501046) needs no resubmission for
+reporting or tooling updates. Follow-up support is now wired in the
+repository for:
+
+- **Held-out greedy replication**: `scripts/rerun_all.py` now schedules
+  held-out replication shards at `[[72,12,6]]`, p = 0.020 for both
+  `greedy` and `lam60` modes (`QUDEC_REPLICATE_MODES=greedy,lam60`).
+- **Higher-statistics cluster campaigns**: `sbatch hpc/rerun_all.slurm high_stat`
+  (or `QUDEC_PRESET=high_stat`) configures 100,000-shot confirmation and
+  replication cohorts (`QUDEC_CONFIRM_SEEDS=40`, `QUDEC_REPLICATE_SEEDS=40`),
+  higher tuning/capacity/circuit shot counts, and the external `ldpc`/`bposd`
+  reference. `sbatch hpc/rerun_all.slurm followup` provides an intermediate
+  25,000-shot confirmation preset.
+- **Circuit tuning and paired inference**: `scripts/bench_circuit.py` and
+  `src/qudec/circuit_decoders.py` support `admm-u` (plain uniform objective),
+  `admm-w` (normalized DEM LLR weights), and `admm-ldr` variants,
+  $(\rho, \alpha)$ tuning grids (`--rhos`, `--alphas`), and per-shot paired
+  JSONL outcome records (`--output <path>.jsonl`).
+- **Verified bibliography**: [docs/paper_draft.md](docs/paper_draft.md)
+  now includes verified equation attributions and full bibliographic entries.
 
 BP/LP and OSD ran on CPU; ADMM used CUDA on A40/RTX A6000 allocations
 (Python 3.10.21, PyTorch 2.5.1+cu121, NumPy 2.2.6, SciPy 1.15.3).
 These runs do not establish a speedup against matched hardware. Finite
 iteration budgets, GPU variation, modest training samples, and exploratory
-LDR choices remain limitations. The manuscript bibliography and current
-literature review still need verification before submission.
+LDR choices remain limitations.
 
 Historical comparisons were withdrawn because of BP tie handling, ADMM
 projection, measurement-prior, and circuit-pipeline defects. Their open
