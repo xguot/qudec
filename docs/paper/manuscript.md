@@ -54,10 +54,10 @@ Stim detector-error-model (DEM) circuit benchmarks [15]. Numerical claims in
 this manuscript are restricted to audited campaign **21501046**, completed on
 Rivanna on October 17, 2026.
 
-The tracked [report](results/21501046/report.json),
-[manifest](results/21501046/manifest.json),
-[frozen settings](results/21501046/selected.json), and
-[audit record](results/21501046/audit.json) provide exact failure counts,
+The tracked [report](../results/21501046/report.json),
+[manifest](../results/21501046/manifest.json),
+[frozen settings](../results/21501046/selected.json), and
+[audit record](../results/21501046/audit.json) provide exact failure counts,
 marginal binomial intervals, paired tests, and SHA-256 provenance. Raw
 per-shot records and the immutable source snapshot remain under
 `results/reruns/21501046/` outside Git. Historical comparisons were withdrawn
@@ -167,7 +167,7 @@ descriptive and do not represent a matched-hardware latency comparison.
 
 Table entries report **total block failures out of 10,000 paired shots** per
 cell. Full marginal 95% intervals and exact paired statistics for both plain and
-weighted ADMM are archived in [results/21501046/report.json](results/21501046/report.json).
+weighted ADMM are archived in [campaign report](../results/21501046/report.json).
 
 | Code | $p$ | OSD | BP | Plain ADMM | Weighted ADMM | Plain Holm $p$ | Weighted Holm $p$ |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |

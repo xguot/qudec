@@ -147,10 +147,7 @@ def load_reference_decoder():
     """Keep optional reference dependencies out of the normal sweep."""
     try:
         from bposd.css import css_code  # noqa: F401: preflight before any runs
-        if __package__:
-            from .bench_gross_ref import BposdRefDecoder
-        else:
-            from bench_gross_ref import BposdRefDecoder
+        from qudec.reference import BposdRefDecoder
     except ImportError as exc:
         raise SystemExit("reference variant requires: pip install -e '.[reference]'") from exc
     return BposdRefDecoder
@@ -196,7 +193,7 @@ def build_decoder(args, matrices, p, name, reference_cls=None):
     if name == "reference":
         config.update(max_iter=args.reference_max_iter, osd_lam=None,
                       calibration="fixed-seed-nonzero-syndromes",
-                      wrapper="scripts/bench_gross_ref.py")
+                      wrapper="src/qudec/reference.py")
         backend = getattr(dec, "_decoder", None)
         if backend is not None:
             config["backend"] = f"{type(backend).__module__}.{type(backend).__name__}"

@@ -149,6 +149,7 @@ class TestCapacityCli(unittest.TestCase):
         self.assertEqual(result["variant"], "reference")
         self.assertEqual(result["shots"], 2)  # Calibration probes are excluded.
         self.assertEqual(result["decoder_config"]["calibration"], "fixed-seed-nonzero-syndromes")
+        self.assertEqual(result["decoder_config"]["wrapper"], "src/qudec/reference.py")
         self.assertEqual(result["solver_device"], "cpu")
         self.assertEqual(result["invalid_x"] + result["invalid_z"], 0)
 

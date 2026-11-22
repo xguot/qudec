@@ -6,7 +6,7 @@ These are repaired, with regression tests. Campaign **21501046 completed
 all 75 tasks** on October 17, 2026. Its source snapshot, manifest,
 settings, artifact hashes, and paired outcomes passed the audit. The
 [tracked report](results/21501046/report.json) and
-[research summary](../research_summary.md) supersede the historical
+[research summary](paper/research_summary.md) supersede the historical
 decoder comparisons.
 
 All new phenomenological runs use full parity projection, matched
@@ -141,7 +141,7 @@ greedy-OSD cell. The four preliminary circuit comparisons favor BP.
 
 The repository now includes:
 - Complete, verified bibliographic citations and equation attributions in
-  [docs/paper_draft.md](paper_draft.md).
+  [the manuscript](paper/manuscript.md).
 - Default held-out replication for both `greedy` and `lam60` modes in
   `scripts/rerun_all.py`.
 - Ready-to-submit `high_stat` (`100k`) and `followup` Slurm presets in
@@ -152,11 +152,16 @@ The repository now includes:
 
 ## Retired files
 
-The old text-only capacity sweeps (`bench_gross.py`, `bench_lp_gross.py`)
-are replaced by `scripts/bench_capacity.py`. The unrelated root QPT
-generator is removed. Their source and the withdrawn numerical tables
-remain available in Git history. The optional reference wrapper remains
-because the current capacity runner imports it.
+`scripts/bench_capacity.py` replaces the text-only capacity sweeps
+(`bench_gross.py`, `bench_lp_gross.py`, and `bench_gross_ref.py`). The
+following commands run the external reference decoder on the original grid.
+
+    python -m pip install -e '.[reference]'
+    python scripts/bench_capacity.py --variants reference --code 144 --shots 20000 \
+        --ps .005 .01 .02 .03 .05 .08 .10 --output results/capacity_reference.jsonl
+
+The former scripts, unrelated root QPT generator, and withdrawn numerical
+tables are available in Git history.
 
 Superseded standalone `results/tune_72.csv` and pre-correction logs were
 removed from the local checkout after the corrected results were committed.

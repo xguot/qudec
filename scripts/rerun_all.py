@@ -194,6 +194,7 @@ def make_plan(config):
                 add("circuit", code="72", p=p, seed=300000,
                     shots=config["circuit_shots"], rounds=3, basis=basis)
     return {"schema_version": 1, "config": config, "tuning": tuning, "tasks": tasks,
+            "reference_wrapper": "src/qudec/reference.py",
             "coverage": {"preset": config.get("preset", "default"),
                          "tasks_by_kind": dict(Counter(t["kind"] for t in tasks)),
                          "tuning_tasks": len(tuning),
@@ -307,7 +308,8 @@ def validate_decoder(row, task, manifest, selection, tune):
             expected.update(weights_x="normalized-channel-llr", weights_z="normalized-channel-llr")
     elif family == "reference":
         expected = {"max_iter": 1000, "osd_lam": None, "device": "cpu",
-                    "calibration": "fixed-seed-nonzero-syndromes", "wrapper": "scripts/bench_gross_ref.py"}
+                    "calibration": "fixed-seed-nonzero-syndromes",
+                    "wrapper": manifest.get("reference_wrapper", "scripts/bench_gross_ref.py")}
     if (any(cfg.get(key) != value for key, value in expected.items())
             or (family != "reference" and set(cfg) != set(expected))
             or row["solver_device"] != device or row["osd_device"] != "cpu"):

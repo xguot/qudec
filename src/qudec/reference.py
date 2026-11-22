@@ -1,39 +1,6 @@
-"""Sweep the gross-code LER with the reference bposd decoder.
-
-Reproduce the published code-capacity logical error rate of the
-[[144, 12, 12]] bivariate bicycle code using Roffe's BP + OSD
-implementation (bposd), the decoder behind the paper's numbers.
-Error sampling and the logical-success check reuse the in-tree
-benchmark. Use scripts/bench_capacity.py for paired comparisons with the
-in-tree decoders and machine-readable per-shot results.
-
-Install the optional dependencies first:
-
-    pip install -e ".[reference]"
-
-Usage:
-
-    python -u scripts/bench_gross_ref.py [shots]
-
-Decoder defaults (minimum-sum BP, 1000 iterations, OSD-CS) follow the
-bposd package. Adjust max_iter / bp_method / osd_method to mirror the
-paper's methods section when matching published data points.
-
-The combined check matrix (css_code.h) stores the error vector as
-[z-part | x-part] with syndrome [sx | sz]. The decoder runs through
-the native ldpc v2 API with the bposd v1 defaults (0.625 min-sum
-scaling, 10 combination-sweep orders) and per-part channel
-probabilities; the wrapper calibrates the syndrome packing and
-correction layout on the first shot whose X and Z syndromes are both
-nonzero, then reuses that format.
-"""
-
-import sys
+"""Adapter for the optional ldpc/bposd reference decoder in capacity benchmarks."""
 
 import numpy as np
-
-from qudec.bench import benchmark_iid
-from qudec.codes import gross_code, logicals
 
 
 class BposdRefDecoder:
@@ -220,21 +187,3 @@ class BposdRefDecoder:
             corr = np.asarray(out[0] if isinstance(out, tuple) else out)
             c_x[i], c_z[i] = self._split(corr.ravel().astype(np.int8))
         return c_x, c_z
-
-
-def main():
-    shots = int(sys.argv[1]) if len(sys.argv) > 1 else 20000
-    h_x, h_z = gross_code()
-    l_x, l_z = logicals(h_x, h_z)
-    for p in [0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1]:
-        dec = BposdRefDecoder(h_x, h_z, l_x, l_z, p)
-        res = benchmark_iid(dec, p, shots, "depolarizing", seed=0)
-        out = ("p={p:5.3f} ler={ler:.5f} ler_x={lx:.5f} ler_z={lz:.5f} "
-               "invalid={ix}+{iz} shots={shots}").format(
-            p=p, ler=res["ler"], lx=res["ler_x"], lz=res["ler_z"],
-            ix=res["invalid_x"], iz=res["invalid_z"], shots=shots)
-        print(out)
-
-
-if __name__ == "__main__":
-    main()

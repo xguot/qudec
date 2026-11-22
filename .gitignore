@@ -22,6 +22,7 @@ data/
 
 # Build artifacts
 *.egg-info/
+/output/
 
 # HPC logs
 hpc/logs/
