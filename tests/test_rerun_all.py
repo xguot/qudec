@@ -234,6 +234,25 @@ class TestCampaign(unittest.TestCase):
                     save_rows(path, bad)
                     campaign.validate_output(path, task, manifest, selection())
 
+    def test_reference_wrapper_matches_the_campaign_manifest(self):
+        manifest = campaign.make_plan(campaign.config_from_env({"QUDEC_INCLUDE_REFERENCE": "1"}))
+        task = next(t for t in manifest["tasks"] if t["kind"] == "capacity")
+        config = dict(max_iter=1000, osd_lam=None, device="cpu",
+                      calibration="fixed-seed-nonzero-syndromes")
+        row = dict(decoder="BposdRefDecoder", variant="reference", decoder_config=config,
+                   environment={"cuda_available": False}, solver_device="cpu", osd_device="cpu")
+        old_manifest = manifest.copy()
+        del old_manifest["reference_wrapper"]
+        new_path, old_path = "src/qudec/reference.py", "scripts/bench_gross_ref.py"
+        for plan, expected, unexpected in ((manifest, new_path, old_path),
+                                           (old_manifest, old_path, new_path)):
+            with self.subTest(wrapper=expected):
+                config["wrapper"] = expected
+                campaign.validate_decoder(row, task, plan, None, False)
+                config["wrapper"] = unexpected
+                with self.assertRaisesRegex(ValueError, "decoder configuration"):
+                    campaign.validate_decoder(row, task, plan, None, False)
+
     def test_checkpoint_checks_content_hash_and_output_semantics(self):
         manifest = campaign.make_plan(campaign.config_from_env({"QUDEC_CONFIRM_SHOTS": "1"}))
         manifest["source_sha256"] = "a" * 64

@@ -1,0 +1,27 @@
+[
+  {
+    "title": "Decoding quantum errors with noisy measurements",
+    "seconds": 39,
+    "script": "I'm Xiyuan Guo. Imagine a quantum memory flags a change in one of its parity checks. A qubit may have suffered an error, or the measurement itself may be wrong. Repeating the checks gives us clues about which explanation fits. A decoder uses that history to choose a correction. I wanted to know whether an optimization method could make that choice more reliably than belief propagation, a standard decoder for quantum low-density parity-check codes."
+  },
+  {
+    "title": "How the decoders choose a correction",
+    "seconds": 52,
+    "script": "Both decoders start with the same check measurements. Belief propagation passes messages between checks and possible errors to estimate which errors are likely. ADMM treats the checks as constraints in an optimization problem. The weighted version assigns a higher cost to less likely errors. Each method produces continuous scores that rank candidate errors. The same final step, ordered statistics decoding, or OSD, uses each ranking separately to choose a binary correction for that decoder. My contribution was to implement the published optimization methods in PyTorch, process trials in batches on a GPU, and compare decoding accuracy."
+  },
+  {
+    "title": "Testing the decoders on the same errors",
+    "seconds": 51,
+    "script": "I first used a phenomenological noise model. In each of six rounds, I simulated errors on the data qubits and independent flips in the check measurements. A final error-free measurement closed the sequence. I gave every decoder the same ten thousand trials in each setting, so I could compare outcomes trial by trial. I tested two bivariate bicycle codes, with 72 and 144 data qubits, at three error rates and two OSD settings. Across those twelve settings, I compared plain and weighted ADMM against belief propagation, giving twenty-four primary comparisons. I tuned ADMM on separate samples beforehand."
+  },
+  {
+    "title": "A modest gain in one tested regime",
+    "seconds": 70,
+    "script": "The clearest difference appeared on the 72-qubit code at a two percent physical error rate, using greedy OSD. On ten thousand trials, belief propagation failed 339 times, plain ADMM failed 323 times, and weighted ADMM failed 294 times. Compared with belief propagation, that's 45 fewer failures, a relative reduction of 13.3 percent. The intervals show the uncertainty in each failure rate. For the paired test, I counted trials where one decoder succeeded and the other failed. Only this comparison passed the five percent threshold after adjusting for all twenty-four tests. Its Holm-adjusted p-value was 0.0375."
+  },
+  {
+    "title": "Circuit-level noise and next steps",
+    "seconds": 53,
+    "script": "I also modeled faults inside the measurement circuit, where a single fault can affect several checks. Belief propagation had fewer failures in all four preliminary settings. For example, in the Z memory at a 0.2 percent physical error rate, it failed ten times in three hundred trials. ADMM failed fifty times. ADMM was untuned in these three-round tests. I can now use the solver and benchmark I built to test two questions. Does the 72-qubit gain repeat on independent samples with greedy OSD? And how does tuning ADMM for circuit faults change its failure rate? More trials would give a more precise answer. Thank you."
+  }
+]

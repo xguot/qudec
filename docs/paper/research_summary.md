@@ -7,10 +7,10 @@ sample fingerprints, and output checksums. The cluster preflight passed
 saved outcomes reproduced every aggregate count and paired test.
 Non-circuit benchmark records have zero invalid or residual-syndrome flags.
 
-The tracked [report](docs/results/21501046/report.json),
-[manifest](docs/results/21501046/manifest.json),
-[selected settings](docs/results/21501046/selected.json), and
-[audit record](docs/results/21501046/audit.json) retain the results and
+The tracked [report](../results/21501046/report.json),
+[manifest](../results/21501046/manifest.json),
+[selected settings](../results/21501046/selected.json), and
+[audit record](../results/21501046/audit.json) retain the results and
 provenance. Raw outcomes, immutable source, and worker logs remain in
 `results/reruns/21501046/`. Launcher validation logs remain in
 `hpc/logs/qudec_rerun_21501046.{out,err}`. These raw directories are
@@ -153,7 +153,7 @@ repository for:
   `admm-w` (normalized DEM LLR weights), and `admm-ldr` variants,
   $(\rho, \alpha)$ tuning grids (`--rhos`, `--alphas`), and per-shot paired
   JSONL outcome records (`--output <path>.jsonl`).
-- **Verified bibliography**: [docs/paper_draft.md](docs/paper_draft.md)
+- **Verified bibliography**: [The manuscript](manuscript.md)
   now includes verified equation attributions and full bibliographic entries.
 
 BP/LP and OSD ran on CPU; ADMM used CUDA on A40/RTX A6000 allocations
@@ -166,4 +166,4 @@ Historical comparisons were withdrawn because of BP tie handling, ADMM
 projection, measurement-prior, and circuit-pipeline defects. Their open
 terminal boundary also differs from `closed-v1`. Superseded tables remain
 in Git history and must not be pooled with this campaign. See the
-[campaign plan](docs/plan.md) and [manuscript draft](docs/paper_draft.md).
+[campaign plan](../plan.md) and [manuscript draft](manuscript.md).

@@ -3,8 +3,8 @@
 This bundle records the completed October 17, 2026 Rivanna campaign.
 Its benchmark source revision is `9cf40da36661542c696695bd95294f8d741f91b4`.
 All 75 artifacts passed integrity and output validation. See the
-[research summary](../../../research_summary.md) for interpretation and
-the [manuscript draft](../../paper_draft.md) for methods and results.
+[research summary](../../paper/research_summary.md) for interpretation and
+the [manuscript draft](../../paper/manuscript.md) for methods and results.
 
 - `report.json`: original cluster numerical results, with corrected
   reporting labels. Confirmation groups identify Holm adjustment;
