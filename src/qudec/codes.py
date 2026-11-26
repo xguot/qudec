@@ -49,7 +49,7 @@ def steane_code():
 
 
 def repetition_code(d):
-    """Return (h_x, h_z) for the [[d, 1, d]] repetition code."""
+    """Return (h_x, h_z) for the [[d, 1, 1]] repetition code."""
     h_z = np.zeros((d - 1, d), dtype=np.int8)
     for i in range(d - 1):
         h_z[i, i] = 1
